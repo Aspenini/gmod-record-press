@@ -11,7 +11,6 @@ type Props = {
   onClose: () => void;
   onPickAddon: (path: string) => void;
   onBrowseFolder: () => void;
-  onOpenProjectFile: () => void;
 };
 
 export function OpenPanel({
@@ -24,7 +23,6 @@ export function OpenPanel({
   onClose,
   onPickAddon,
   onBrowseFolder,
-  onOpenProjectFile,
 }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -128,14 +126,7 @@ export function OpenPanel({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3">
-          <button
-            type="button"
-            onClick={onOpenProjectFile}
-            className="text-xs text-muted hover:text-gold"
-          >
-            Open project file
-          </button>
+        <div className="flex items-center justify-end border-t border-line px-5 py-3">
           <button
             type="button"
             onClick={onBrowseFolder}

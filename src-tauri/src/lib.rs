@@ -111,49 +111,6 @@ async fn pick_export_dir(app: tauri::AppHandle) -> Result<Option<String>, String
 }
 
 #[tauri::command]
-async fn pick_save_project(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let picked = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
-            .file()
-            .add_filter("Album project", &["json"])
-            .set_file_name("album.json")
-            .set_title("Save album project")
-            .blocking_save_file()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(picked.and_then(|p| p.into_path().ok().map(|p| p.to_string_lossy().to_string())))
-}
-
-#[tauri::command]
-async fn pick_open_project(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let picked = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
-            .file()
-            .add_filter("Album project", &["json"])
-            .set_title("Open album project")
-            .blocking_pick_file()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(picked.and_then(|p| p.into_path().ok().map(|p| p.to_string_lossy().to_string())))
-}
-
-#[tauri::command]
-fn save_project(path: String, project: AlbumProject) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(&project).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn load_project(path: String) -> Result<AlbumProject, String> {
-    let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&json).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 async fn list_vinyl_addons(scan_dir: Option<String>) -> Result<VinylLibrary, String> {
     tauri::async_runtime::spawn_blocking(move || import::list_vinyl_library(scan_dir))
         .await
@@ -285,11 +242,7 @@ pub fn run() {
             pick_image,
             pick_audio_files,
             pick_export_dir,
-            pick_save_project,
-            pick_open_project,
             pick_addon_folder,
-            save_project,
-            load_project,
             list_vinyl_addons,
             import_vinyl_addon,
             open_path,

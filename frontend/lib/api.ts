@@ -23,16 +23,11 @@ export const api = {
   pickImage: () => invoke<ImagePreview | null>("pick_image"),
   pickAudioFiles: () => invoke<AudioScan>("pick_audio_files"),
   pickExportDir: () => invoke<string | null>("pick_export_dir"),
-  pickSaveProject: () => invoke<string | null>("pick_save_project"),
-  pickOpenProject: () => invoke<string | null>("pick_open_project"),
   pickAddonFolder: () => invoke<string | null>("pick_addon_folder"),
   listVinylAddons: (scanDir?: string | null) =>
     invoke<VinylLibrary>("list_vinyl_addons", { scanDir: scanDir ?? null }),
   importVinylAddon: (path: string) =>
     invoke<AlbumProject>("import_vinyl_addon", { path }),
-  saveProject: (path: string, project: AlbumProject) =>
-    invoke<void>("save_project", { path, project }),
-  loadProject: (path: string) => invoke<AlbumProject>("load_project", { path }),
   openPath: (path: string) => invoke<void>("open_path", { path }),
   exportAddon: (project: AlbumProject, options: ExportOptions) =>
     invoke<ExportResult>("export_addon", { project, options }),

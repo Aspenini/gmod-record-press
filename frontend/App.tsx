@@ -86,7 +86,6 @@ export default function App() {
   );
   const [error, setError] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
-  const [projectPath, setProjectPath] = useState<string | null>(null);
   const [openPanel, setOpenPanel] = useState(false);
   const [openLoading, setOpenLoading] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -95,8 +94,6 @@ export default function App() {
   const [leftView, setLeftView] = useState<LeftView>("album");
   const [rightView, setRightView] = useState<RightView>("export");
   const [metaPicker, setMetaPicker] = useState<AlbumMetaSuggestion | null>(null);
-  const [cleanSignature, setCleanSignature] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const metaRef = useRef({
     artist: "",
     album: "",
@@ -105,7 +102,6 @@ export default function App() {
     label: null as ImagePreview | null,
     tracks: [] as Track[],
   });
-  const saveProjectRef = useRef<() => Promise<void>>(async () => undefined);
   metaRef.current = { artist, album, cover, back, label, tracks };
   const dropHandlerRef = useRef<(paths: string[], target: DropTarget) => void>(() => {});
 
@@ -151,13 +147,6 @@ export default function App() {
         : workshopItems,
     [showOnlyRelevantWorkshopItems, workshopItems],
   );
-  const currentSignature = JSON.stringify(project);
-  const isDirty = cleanSignature !== null && cleanSignature !== currentSignature;
-
-  useEffect(() => {
-    if (cleanSignature === null) setCleanSignature(currentSignature);
-  }, [cleanSignature, currentSignature]);
-
   useEffect(() => {
     api
       .suggestGmodAddonsDir()
@@ -169,17 +158,6 @@ export default function App() {
       })
       .catch((err) => setError(errorMessage(err)));
     void refreshSteam();
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        void saveProjectRef.current();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -444,18 +422,6 @@ export default function App() {
       setWorkshopResult(published);
       setResult(published.export);
       setWorkshopId(String(published.workshopId));
-      const publishedProject = { ...project, workshopId: published.workshopId };
-      if (projectPath) {
-        try {
-          await api.saveProject(projectPath, publishedProject);
-          setCleanSignature(JSON.stringify(publishedProject));
-          setNotice("Published and saved");
-        } catch (saveErr) {
-          setError(`Published successfully, but the project could not be saved: ${errorMessage(saveErr)}`);
-        }
-      } else {
-        setNotice("Published — save the project to keep its Workshop link");
-      }
       void openUrl(published.url).catch(() => undefined);
       if (published.needsLegalAgreement) {
         void openUrl(published.legalAgreementUrl).catch(() => undefined);
@@ -467,21 +433,6 @@ export default function App() {
       setBusy(false);
     }
   }
-
-  async function saveProject() {
-    setError(null);
-    try {
-      const path = projectPath ?? (await api.pickSaveProject());
-      if (!path) return;
-      await api.saveProject(path, project);
-      setProjectPath(path);
-      setCleanSignature(currentSignature);
-      setNotice("Saved");
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }
-  saveProjectRef.current = saveProject;
 
   async function showOpenPanel() {
     setOpenPanel(true);
@@ -500,19 +451,11 @@ export default function App() {
     }
   }
 
-  async function applyLoadedProject(loaded: AlbumProject, jsonPath: string | null) {
-    if (!confirmDiscardChanges()) return false;
+  async function applyLoadedProject(loaded: AlbumProject) {
     const useTemplate = loaded.workshopUseTemplate !== false;
     const loadedDescription = useTemplate
       ? defaultWorkshopDescription(loaded.artist, loaded.album)
       : loaded.workshopDescription ?? "";
-    const normalizedProject: AlbumProject = {
-      ...loaded,
-      addonTitle: defaultAddonTitle(loaded.artist, loaded.album),
-      workshopDescription: loadedDescription,
-      workshopVisibility: loaded.workshopVisibility || "private",
-      workshopUseTemplate: useTemplate,
-    };
     setArtist(loaded.artist);
     setAlbum(loaded.album);
     setVinylId(loaded.vinylId);
@@ -551,7 +494,6 @@ export default function App() {
         };
       }),
     );
-    setProjectPath(jsonPath);
     setResult(null);
     setWorkshopResult(null);
     setWorkshopId(loaded.workshopId ? String(loaded.workshopId) : "");
@@ -562,21 +504,17 @@ export default function App() {
     setOpenPanel(false);
     setOpenError(null);
     setMetaPicker(null);
-    setCleanSignature(JSON.stringify(normalizedProject));
-    setNotice(jsonPath ? "Project opened" : "Addon imported");
-    return true;
   }
 
   async function openVinylAddon(path: string) {
     setOpenError(null);
     try {
       const loaded = await api.importVinylAddon(path);
-      if (await applyLoadedProject(loaded, null)) {
-        const parent = path.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
-        if (parent) {
-          setDestDir(parent);
-          localStorage.setItem("rpam.destDir", parent);
-        }
+      await applyLoadedProject(loaded);
+      const parent = path.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
+      if (parent) {
+        setDestDir(parent);
+        localStorage.setItem("rpam.destDir", parent);
       }
     } catch (err) {
       setOpenError(err instanceof Error ? err.message : String(err));
@@ -589,12 +527,11 @@ export default function App() {
     setOpenError(null);
     try {
       const loaded = await api.importVinylAddon(dir);
-      if (await applyLoadedProject(loaded, null)) {
-        const parent = dir.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
-        if (parent) {
-          setDestDir(parent);
-          localStorage.setItem("rpam.destDir", parent);
-        }
+      await applyLoadedProject(loaded);
+      const parent = dir.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
+      if (parent) {
+        setDestDir(parent);
+        localStorage.setItem("rpam.destDir", parent);
       }
       return;
     } catch {
@@ -615,19 +552,7 @@ export default function App() {
     }
   }
 
-  async function openProjectFile() {
-    const path = await api.pickOpenProject();
-    if (!path) return;
-    try {
-      const loaded = await api.loadProject(path);
-      await applyLoadedProject(loaded, path);
-    } catch (err) {
-      setOpenError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
   function reset() {
-    if (!confirmDiscardChanges()) return;
     setArtist("");
     setAlbum("");
     setVinylId("");
@@ -642,22 +567,12 @@ export default function App() {
     setResult(null);
     setWorkshopResult(null);
     setError(null);
-    setProjectPath(null);
     setWorkshopId("");
     setWorkshopDescription(defaultWorkshopDescription("", ""));
     setUseDescriptionTemplate(true);
     setWorkshopVisibility("private");
     setChangeNote("");
     setMetaPicker(null);
-    setCleanSignature(null);
-    setNotice("New project");
-  }
-
-  function confirmDiscardChanges() {
-    return (
-      !isDirty ||
-      window.confirm("You have unsaved changes. Discard them and continue?")
-    );
   }
 
   const errors = issues.filter((i) => i.level === "error");
@@ -693,12 +608,8 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <span className={isDirty ? "mr-1 text-gold" : "mr-1 text-muted"}>
-            {isDirty ? "Unsaved changes" : notice}
-          </span>
           <GhostButton onClick={reset}>New</GhostButton>
           <GhostButton onClick={() => void showOpenPanel()}>Open</GhostButton>
-          <GhostButton onClick={() => void saveProject()}>Save</GhostButton>
         </div>
       </header>
 
@@ -1191,7 +1102,6 @@ export default function App() {
         }}
         onPickAddon={(path) => void openVinylAddon(path)}
         onBrowseFolder={() => void browseAddonFolder()}
-        onOpenProjectFile={() => void openProjectFile()}
       />
     </div>
   );

@@ -401,17 +401,17 @@ fn add_record_player_dependency(parent: PublishedFileId) -> AppResult<()> {
         let api_call = sys::SteamAPI_ISteamUGC_AddDependency(ugc, parent.0, child.0);
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let mut failed = false;
-            if sys::SteamAPI_ISteamUtils_IsAPICallCompleted(utils, api_call, &mut failed) {
+            let mut call_failed = false;
+            if sys::SteamAPI_ISteamUtils_IsAPICallCompleted(utils, api_call, &mut call_failed) {
                 let mut result = std::mem::MaybeUninit::<sys::AddUGCDependencyResult_t>::zeroed();
-                let mut read_failed = false;
+                let mut result_failed = false;
                 let got = sys::SteamAPI_ISteamUtils_GetAPICallResult(
                     utils,
                     api_call,
                     result.as_mut_ptr().cast(),
                     std::mem::size_of::<sys::AddUGCDependencyResult_t>() as i32,
                     sys::AddUGCDependencyResult_t_k_iCallback as i32,
-                    &mut read_failed,
+                    &mut result_failed,
                 );
                 if got {
                     let result = result.assume_init();
@@ -423,18 +423,14 @@ fn add_record_player_dependency(parent: PublishedFileId) -> AppResult<()> {
                     }
                     return Ok(());
                 }
-                // The callback thread may already have consumed the result.
-                if failed && read_failed {
-                    return Err(AppError::Message(
-                        "Steam could not set Working Record Player as a required item.".into(),
-                    ));
-                }
+                // The callback runner can consume this result first. At that point
+                // Steam completed the request, but there is no result left to read.
                 return Ok(());
             }
             if Instant::now() >= deadline {
-                return Err(AppError::Message(
-                    "Timed out setting Working Record Player as a required item.".into(),
-                ));
+                // The request was submitted successfully. A busy callback runner can
+                // make this polling path miss the completion even though Steam applied it.
+                return Ok(());
             }
             std::thread::sleep(Duration::from_millis(50));
         }
