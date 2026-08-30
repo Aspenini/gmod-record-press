@@ -125,6 +125,7 @@ fn parse_addon_dir(root: &Path) -> Option<ParsedAddon> {
             workshop_id,
             workshop_description: String::new(),
             workshop_visibility: "private".into(),
+            workshop_use_template: true,
         },
         cover_path,
     })
@@ -465,6 +466,7 @@ mod tests {
             workshop_id: None,
             workshop_description: String::new(),
             workshop_visibility: "private".into(),
+            workshop_use_template: true,
         };
         let lua = render_autorun(
             &project,

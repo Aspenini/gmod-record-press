@@ -39,6 +39,7 @@ export type AlbumProject = {
   workshopId: number | null;
   workshopDescription: string;
   workshopVisibility: "private" | "friends" | "public" | string;
+  workshopUseTemplate: boolean;
 };
 
 export type ExportOptions = {
@@ -94,6 +95,7 @@ export type WorkshopPublishOptions = {
   description: string;
   visibility: string;
   changeNote: string;
+  useTemplate: boolean;
 };
 
 export type WorkshopPublishResult = {

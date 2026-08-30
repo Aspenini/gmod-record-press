@@ -30,6 +30,8 @@ pub struct AlbumProject {
     pub workshop_description: String,
     #[serde(default = "default_workshop_visibility")]
     pub workshop_visibility: String,
+    #[serde(default = "default_true")]
+    pub workshop_use_template: bool,
 }
 
 fn default_vinyl_color() -> String {
@@ -44,23 +46,53 @@ fn default_workshop_visibility() -> String {
     "private".to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl AlbumProject {
     pub fn resolved_title(&self) -> String {
-        let title = self.addon_title.trim();
-        if title.is_empty() {
-            format!(
-                "[Working Record Player] {} - {}",
-                self.artist.trim(),
-                self.album.trim()
-            )
-        } else {
-            title.to_string()
-        }
+        standard_addon_title(&self.artist, &self.album)
     }
 
     pub fn addon_folder_name(&self) -> String {
         format!("recordplayer_{}", self.vinyl_id)
     }
+}
+
+pub fn standard_addon_title(artist: &str, album: &str) -> String {
+    let artist = artist.trim();
+    let album = album.trim();
+    match (artist.is_empty(), album.is_empty()) {
+        (false, false) => format!("[Working Record Player] {artist} - {album}"),
+        (false, true) => format!("[Working Record Player] {artist}"),
+        (true, false) => format!("[Working Record Player] {album}"),
+        (true, true) => "[Working Record Player]".to_string(),
+    }
+}
+
+pub fn standard_workshop_description(artist: &str, album: &str) -> String {
+    let artist = artist.trim();
+    let album = album.trim();
+    let pack = match (artist.is_empty(), album.is_empty()) {
+        (false, false) => format!("{artist} - {album}"),
+        (false, true) => artist.to_string(),
+        (true, false) => album.to_string(),
+        (true, true) => "Music Pack".to_string(),
+    };
+    format!(
+        "[h1]Working Record Player - {pack}[/h1]\n\
+         \n\
+         Adds music for use with the [b]Working Record Player[/b] addon in Garry's Mod.\n\
+         \n\
+         [h2]Copyright Notice[/h2]\n\
+         \n\
+         This is an unofficial, fan-made Workshop addon.\n\
+         \n\
+         I do not claim ownership of any music, recordings, artwork, trademarks, or other copyrighted material included in this addon. All rights belong to their respective artists, labels, publishers, and copyright holders.\n\
+         \n\
+         This addon is not affiliated with or endorsed by the original artists or rights holders and is provided for entertainment purposes only."
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,6 +178,8 @@ pub struct WorkshopPublishOptions {
     pub visibility: String,
     #[serde(default)]
     pub change_note: String,
+    #[serde(default = "default_true")]
+    pub use_template: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

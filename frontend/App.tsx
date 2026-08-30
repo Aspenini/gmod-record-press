@@ -7,7 +7,7 @@ import { Preview } from "./components/Preview";
 import { TrackList } from "./components/TrackList";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "./lib/api";
-import { defaultAddonTitle, parseWorkshopId, slugify } from "./lib/slug";
+import { defaultAddonTitle, defaultWorkshopDescription, parseWorkshopId, slugify } from "./lib/slug";
 import type {
   AlbumProject,
   AudioInfo,
@@ -43,8 +43,7 @@ export default function App() {
   const [album, setAlbum] = useState("");
   const [vinylId, setVinylId] = useState("");
   const [idTouched, setIdTouched] = useState(false);
-  const [addonTitle, setAddonTitle] = useState("");
-  const [titleTouched, setTitleTouched] = useState(false);
+  const [addonTitle, setAddonTitle] = useState("[Working Record Player]");
   const [cover, setCover] = useState<ImagePreview | null>(null);
   const [back, setBack] = useState<ImagePreview | null>(null);
   const [label, setLabel] = useState<ImagePreview | null>(null);
@@ -57,7 +56,7 @@ export default function App() {
   const [writeIcon, setWriteIcon] = useState(true);
   const [workshopId, setWorkshopId] = useState("");
   const [workshopDescription, setWorkshopDescription] = useState("");
-  const [descriptionTouched, setDescriptionTouched] = useState(false);
+  const [useDescriptionTemplate, setUseDescriptionTemplate] = useState(true);
   const [workshopVisibility, setWorkshopVisibility] = useState("private");
   const [changeNote, setChangeNote] = useState("");
   const [steam, setSteam] = useState<WorkshopStatus | null>(null);
@@ -93,6 +92,7 @@ export default function App() {
       workshopId: parseWorkshopId(workshopId),
       workshopDescription,
       workshopVisibility,
+      workshopUseTemplate: useDescriptionTemplate,
     }),
     [
       artist,
@@ -108,6 +108,7 @@ export default function App() {
       workshopId,
       workshopDescription,
       workshopVisibility,
+      useDescriptionTemplate,
     ],
   );
 
@@ -126,14 +127,13 @@ export default function App() {
   }, [album, idTouched]);
 
   useEffect(() => {
-    if (!titleTouched) setAddonTitle(defaultAddonTitle(artist, album));
-  }, [artist, album, titleTouched]);
+    setAddonTitle(defaultAddonTitle(artist, album));
+  }, [artist, album]);
 
   useEffect(() => {
-    if (descriptionTouched) return;
-    const names = tracks.map((t) => t.name);
-    setWorkshopDescription(defaultWorkshopDescription(artist, album, names));
-  }, [artist, album, tracks, descriptionTouched]);
+    if (!useDescriptionTemplate) return;
+    setWorkshopDescription(defaultWorkshopDescription(artist, album));
+  }, [artist, album, useDescriptionTemplate]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -302,9 +302,10 @@ export default function App() {
       const published = await api.publishWorkshop(project, {
         destDir,
         workshopId: parseWorkshopId(workshopId),
-        description: workshopDescription,
+        description: useDescriptionTemplate ? "" : workshopDescription,
         visibility: workshopVisibility,
         changeNote,
+        useTemplate: useDescriptionTemplate,
       });
       setWorkshopResult(published);
       setResult(published.export);
@@ -350,8 +351,7 @@ export default function App() {
     setAlbum(loaded.album);
     setVinylId(loaded.vinylId);
     setIdTouched(true);
-    setAddonTitle(loaded.addonTitle);
-    setTitleTouched(Boolean(loaded.addonTitle));
+    setAddonTitle(defaultAddonTitle(loaded.artist, loaded.album));
     setVinylColor(loaded.vinylColor);
     setVinylResolution(loaded.vinylResolution);
     setCover(
@@ -389,8 +389,13 @@ export default function App() {
     setResult(null);
     setWorkshopResult(null);
     setWorkshopId(loaded.workshopId ? String(loaded.workshopId) : "");
-    setWorkshopDescription(loaded.workshopDescription ?? "");
-    setDescriptionTouched(Boolean(loaded.workshopDescription));
+    const useTemplate = loaded.workshopUseTemplate !== false;
+    setUseDescriptionTemplate(useTemplate);
+    setWorkshopDescription(
+      useTemplate
+        ? defaultWorkshopDescription(loaded.artist, loaded.album)
+        : loaded.workshopDescription ?? "",
+    );
     setWorkshopVisibility(loaded.workshopVisibility || "private");
     setChangeNote("");
     setOpenPanel(false);
@@ -459,8 +464,7 @@ export default function App() {
     setAlbum("");
     setVinylId("");
     setIdTouched(false);
-    setAddonTitle("");
-    setTitleTouched(false);
+    setAddonTitle("[Working Record Player]");
     setCover(null);
     setBack(null);
     setLabel(null);
@@ -472,8 +476,8 @@ export default function App() {
     setError(null);
     setProjectPath(null);
     setWorkshopId("");
-    setWorkshopDescription("");
-    setDescriptionTouched(false);
+    setWorkshopDescription(defaultWorkshopDescription("", ""));
+    setUseDescriptionTemplate(true);
     setWorkshopVisibility("private");
     setChangeNote("");
   }
@@ -518,14 +522,17 @@ export default function App() {
                 }}
                 hint="Used in every file path. Keep it unique."
               />
-              <Field
-                label="Addon title"
-                value={addonTitle}
-                onChange={(v) => {
-                  setTitleTouched(true);
-                  setAddonTitle(v);
-                }}
-              />
+              <label className="block">
+                <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
+                  Addon title
+                </span>
+                <div className="mt-1 w-full border-b border-line py-1 text-cream">
+                  {addonTitle}
+                </div>
+                <span className="mt-1 block text-[11px] text-muted">
+                  Always [Working Record Player] Artist - Album
+                </span>
+              </label>
             </div>
           </section>
 
@@ -744,18 +751,28 @@ export default function App() {
               </select>
             </label>
 
-            <label className="mt-3 block">
+            <label className="mt-3 flex items-center gap-2 text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={useDescriptionTemplate}
+                onChange={(e) => setUseDescriptionTemplate(e.target.checked)}
+              />
+              Use default description
+            </label>
+            <label className="mt-2 block">
               <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
                 Description
               </span>
               <textarea
                 value={workshopDescription}
-                onChange={(e) => {
-                  setDescriptionTouched(true);
-                  setWorkshopDescription(e.target.value);
-                }}
-                rows={6}
-                className="mt-1 w-full resize-y rounded-lg border border-line bg-ink px-3 py-2 text-sm text-cream outline-none focus:border-gold"
+                readOnly={useDescriptionTemplate}
+                onChange={(e) => setWorkshopDescription(e.target.value)}
+                rows={10}
+                className={`mt-1 w-full resize-y rounded-lg border border-line px-3 py-2 text-sm outline-none ${
+                  useDescriptionTemplate
+                    ? "bg-ink/50 text-muted"
+                    : "bg-ink text-cream focus:border-gold"
+                }`}
               />
             </label>
 
@@ -920,28 +937,6 @@ function GhostButton({
       {children}
     </button>
   );
-}
-
-function defaultWorkshopDescription(
-  artist: string,
-  album: string,
-  tracks: string[],
-): string {
-  const who = artist.trim();
-  const title = album.trim();
-  const heading =
-    who && title ? `${who} — ${title}` : who || title || "Untitled vinyl";
-  const list = tracks
-    .map((name, index) => `${index + 1}. ${name.trim() || "Untitled track"}`)
-    .join("\n");
-  return `${heading}
-
-A vinyl for the Working Record Player.
-
-Tracks:
-${list || "(none yet)"}
-
-Requires Working Record Player.`;
 }
 
 function targetFromPoint(x: number, y: number): DropTarget {

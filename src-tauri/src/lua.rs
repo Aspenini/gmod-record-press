@@ -125,6 +125,7 @@ mod tests {
             workshop_id: None,
             workshop_description: String::new(),
             workshop_visibility: "private".into(),
+            workshop_use_template: true,
         };
         let lua = render_autorun(
             &project,

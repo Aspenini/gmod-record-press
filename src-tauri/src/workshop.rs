@@ -1,8 +1,8 @@
 use crate::error::{AppError, AppResult};
 use crate::export::export_album;
 use crate::model::{
-    AlbumProject, ExportOptions, ExportProgress, ExportResult, WorkshopItem, WorkshopPublishOptions,
-    WorkshopPublishResult, WorkshopProgress, WorkshopStatus,
+    standard_workshop_description, AlbumProject, ExportOptions, ExportProgress, ExportResult,
+    WorkshopItem, WorkshopPublishOptions, WorkshopPublishResult, WorkshopProgress, WorkshopStatus,
 };
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -169,16 +169,7 @@ pub fn workshop_url(id: u64) -> String {
 }
 
 pub fn default_description(project: &AlbumProject) -> String {
-    let mut out = format!(
-        "{} — {}\n\nA vinyl for the Working Record Player.\n\nTracks:\n",
-        project.artist.trim(),
-        project.album.trim()
-    );
-    for (index, track) in project.tracks.iter().enumerate() {
-        out.push_str(&format!("{}. {}\n", index + 1, track.name.trim()));
-    }
-    out.push_str("\nRequires Working Record Player.");
-    out
+    standard_workshop_description(&project.artist, &project.album)
 }
 
 fn connect() -> AppResult<Client> {
@@ -347,6 +338,9 @@ fn upload_item(
 }
 
 fn resolved_description(project: &AlbumProject, options: &WorkshopPublishOptions) -> String {
+    if options.use_template {
+        return truncate(&default_description(project), DESCRIPTION_MAX);
+    }
     let explicit = options.description.trim();
     let from_project = project.workshop_description.trim();
     let text = if !explicit.is_empty() {
@@ -438,15 +432,17 @@ mod tests {
             workshop_id: None,
             workshop_description: String::new(),
             workshop_visibility: "private".into(),
+            workshop_use_template: true,
         }
     }
 
     #[test]
-    fn description_lists_tracks() {
+    fn description_uses_copyright_template() {
         let text = default_description(&project());
-        assert!(text.contains("Test Artist — Demo Days"));
-        assert!(text.contains("1. First Song"));
-        assert!(text.contains("Working Record Player"));
+        assert!(text.contains("[h1]Working Record Player - Test Artist - Demo Days[/h1]"));
+        assert!(text.contains("[b]Working Record Player[/b]"));
+        assert!(text.contains("Copyright Notice"));
+        assert!(!text.contains("1. First Song"));
     }
 
     #[test]
@@ -468,5 +464,13 @@ mod tests {
     #[test]
     fn workshop_url_uses_id() {
         assert!(workshop_url(123).ends_with("id=123"));
+    }
+
+    #[test]
+    fn title_follows_working_record_player_scheme() {
+        assert_eq!(
+            crate::model::standard_addon_title("Hank Williams Jr.", "If The South Woulda Won"),
+            "[Working Record Player] Hank Williams Jr. - If The South Woulda Won"
+        );
     }
 }
