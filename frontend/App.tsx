@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Dropzone } from "./components/Dropzone";
+import { MetadataPicker } from "./components/MetadataPicker";
 import { OpenPanel } from "./components/OpenPanel";
 import { Preview } from "./components/Preview";
 import { TrackList } from "./components/TrackList";
 import { ViewSwitch } from "./components/ViewSwitch";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "./lib/api";
+import { suggestAlbumMeta, type AlbumMetaSuggestion } from "./lib/audioMeta";
 import { defaultAddonTitle, defaultWorkshopDescription, parseWorkshopId, slugify } from "./lib/slug";
 import type {
   AlbumProject,
   AudioInfo,
+  AudioScan,
   ExportProgress,
   ExportResult,
   ImagePreview,
@@ -81,6 +84,17 @@ export default function App() {
   const [libraryDir, setLibraryDir] = useState<string | null>(null);
   const [leftView, setLeftView] = useState<LeftView>("album");
   const [rightView, setRightView] = useState<RightView>("export");
+  const [metaPicker, setMetaPicker] = useState<AlbumMetaSuggestion | null>(null);
+  const metaRef = useRef({
+    artist: "",
+    album: "",
+    cover: null as ImagePreview | null,
+    back: null as ImagePreview | null,
+    label: null as ImagePreview | null,
+    tracks: [] as Track[],
+  });
+  metaRef.current = { artist, album, cover, back, label, tracks };
+  const dropHandlerRef = useRef<(paths: string[], target: DropTarget) => void>(() => {});
 
   const project = useMemo<AlbumProject>(
     () => ({
@@ -182,7 +196,7 @@ export default function App() {
         }
         if (event.payload.type === "drop") {
           setDropTarget(null);
-          void handleDroppedPaths(event.payload.paths, target);
+          dropHandlerRef.current(event.payload.paths, target);
         }
       })
       .then((fn) => {
@@ -206,11 +220,7 @@ export default function App() {
     );
 
     if (audio.length) {
-      const infos = await api.audioInfo(audio);
-      setTracks((cur) => {
-        const known = new Set(cur.map((t) => t.path));
-        return [...cur, ...infos.filter((i) => !known.has(i.path)).map(newTrack)];
-      });
+      await ingestAudio(await api.audioInfo(audio));
     }
 
     if (!images.length) return;
@@ -219,6 +229,7 @@ export default function App() {
     else if (target === "label") setLabel(preview);
     else setCover(preview);
   }
+  dropHandlerRef.current = handleDroppedPaths;
 
   async function pickArt(which: "cover" | "back" | "label") {
     const picked = await api.pickImage();
@@ -229,11 +240,56 @@ export default function App() {
   }
 
   async function addTracks() {
-    const infos = await api.pickAudioFiles();
+    const scan = await api.pickAudioFiles();
+    if (!scan.tracks.length) return;
+    await ingestAudio(scan);
+  }
+
+  async function ingestAudio(scan: AudioScan) {
+    const known = new Set(metaRef.current.tracks.map((t) => t.path));
+    const added = scan.tracks.filter((info) => !known.has(info.path));
+    if (!added.length) return;
     setTracks((cur) => {
-      const known = new Set(cur.map((t) => t.path));
-      return [...cur, ...infos.filter((i) => !known.has(i.path)).map(newTrack)];
+      const seen = new Set(cur.map((t) => t.path));
+      return [...cur, ...added.filter((info) => !seen.has(info.path)).map(newTrack)];
     });
+
+    const current = metaRef.current;
+    const suggestion = suggestAlbumMeta(added, scan.pictures, {
+      artist: current.artist,
+      album: current.album,
+      hasCover: Boolean(current.cover),
+      hasBack: Boolean(current.back),
+      hasLabel: Boolean(current.label),
+    });
+    applyAlbumMeta(suggestion);
+    if (suggestion.textConflicts.length || suggestion.artConflicts.length) {
+      setMetaPicker(suggestion);
+    }
+  }
+
+  function applyAlbumMeta(picked: {
+    artist?: string;
+    album?: string;
+    cover?: ImagePreview;
+    back?: ImagePreview;
+    label?: ImagePreview;
+  }) {
+    if (picked.artist) {
+      setArtist((cur) => (cur.trim() ? cur : picked.artist!));
+    }
+    if (picked.album) {
+      setAlbum((cur) => (cur.trim() ? cur : picked.album!));
+    }
+    if (picked.cover) {
+      setCover((cur) => cur ?? picked.cover ?? null);
+    }
+    if (picked.back) {
+      setBack((cur) => cur ?? picked.back ?? null);
+    }
+    if (picked.label) {
+      setLabel((cur) => cur ?? picked.label ?? null);
+    }
   }
 
   function moveTrack(id: string, dir: -1 | 1) {
@@ -375,7 +431,7 @@ export default function App() {
         : null,
     );
     const infos = loaded.tracks.length
-      ? await api.audioInfo(loaded.tracks.map((t) => t.path))
+      ? (await api.audioInfo(loaded.tracks.map((t) => t.path))).tracks
       : [];
     const infoByPath = new Map(infos.map((info) => [info.path, info]));
     setTracks(
@@ -405,6 +461,7 @@ export default function App() {
     setChangeNote("");
     setOpenPanel(false);
     setOpenError(null);
+    setMetaPicker(null);
   }
 
   async function openVinylAddon(path: string) {
@@ -485,6 +542,7 @@ export default function App() {
     setUseDescriptionTemplate(true);
     setWorkshopVisibility("private");
     setChangeNote("");
+    setMetaPicker(null);
   }
 
   const errors = issues.filter((i) => i.level === "error");
@@ -925,6 +983,17 @@ export default function App() {
           </div>
         </aside>
       </main>
+      {metaPicker && (
+        <MetadataPicker
+          textConflicts={metaPicker.textConflicts}
+          artConflicts={metaPicker.artConflicts}
+          onSkip={() => setMetaPicker(null)}
+          onApply={(picked) => {
+            applyAlbumMeta(picked);
+            setMetaPicker(null);
+          }}
+        />
+      )}
       <OpenPanel
         open={openPanel}
         loading={openLoading}

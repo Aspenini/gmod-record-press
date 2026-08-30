@@ -10,11 +10,36 @@ export type ImagePreview = {
   height: number;
 };
 
+export type TrackPicture = {
+  id: string;
+  kind: string;
+};
+
+export type EmbeddedArt = {
+  id: string;
+  kind: string;
+  path: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+};
+
 export type AudioInfo = {
   path: string;
   fileName: string;
   suggestedName: string;
   size: number;
+  artist?: string | null;
+  album?: string | null;
+  albumArtist?: string | null;
+  title?: string | null;
+  trackNumber?: number | null;
+  pictures?: TrackPicture[];
+};
+
+export type AudioScan = {
+  tracks: AudioInfo[];
+  pictures: EmbeddedArt[];
 };
 
 export type Track = {

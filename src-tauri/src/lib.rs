@@ -1,3 +1,4 @@
+mod audio_meta;
 mod error;
 mod export;
 mod gma;
@@ -12,11 +13,10 @@ mod workshop;
 
 use crate::error::AppResult;
 use crate::model::{
-    validate_project, AlbumProject, AudioInfo, ExportOptions, ExportProgress, ExportResult,
+    validate_project, AlbumProject, AudioScan, ExportOptions, ExportProgress, ExportResult,
     ImagePreview, Issue, VinylLibrary, WorkshopItem, WorkshopPublishOptions, WorkshopPublishResult,
     WorkshopProgress, WorkshopStatus,
 };
-use crate::slug::title_from_filename;
 use crate::vtf_encode::{load_image, preview_data_url};
 use std::path::Path;
 use tauri::Emitter;
@@ -38,28 +38,8 @@ fn suggest_gmod_addons_dir() -> Option<String> {
 }
 
 #[tauri::command]
-fn audio_info(paths: Vec<String>) -> Vec<AudioInfo> {
-    paths
-        .into_iter()
-        .filter_map(|path| {
-            let p = Path::new(&path);
-            if !p.is_file() {
-                return None;
-            }
-            let file_name = p
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("track")
-                .to_string();
-            let size = p.metadata().map(|m| m.len()).unwrap_or(0);
-            Some(AudioInfo {
-                suggested_name: title_from_filename(&path),
-                path,
-                file_name,
-                size,
-            })
-        })
-        .collect()
+fn audio_info(paths: Vec<String>) -> AudioScan {
+    audio_meta::scan_audio(&paths)
 }
 
 #[tauri::command]
@@ -86,7 +66,7 @@ async fn pick_image(app: tauri::AppHandle) -> Result<Option<ImagePreview>, Strin
 }
 
 #[tauri::command]
-async fn pick_audio_files(app: tauri::AppHandle) -> Result<Vec<AudioInfo>, String> {
+async fn pick_audio_files(app: tauri::AppHandle) -> Result<AudioScan, String> {
     let picked = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
@@ -98,27 +78,15 @@ async fn pick_audio_files(app: tauri::AppHandle) -> Result<Vec<AudioInfo>, Strin
     .map_err(|e| e.to_string())?;
 
     let Some(files) = picked else {
-        return Ok(Vec::new());
+        return Ok(AudioScan::default());
     };
 
-    Ok(files
+    let paths: Vec<String> = files
         .into_iter()
         .filter_map(|f| f.into_path().ok())
-        .filter_map(|path| {
-            let file_name = path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("track")
-                .to_string();
-            let size = path.metadata().map(|m| m.len()).unwrap_or(0);
-            Some(AudioInfo {
-                suggested_name: title_from_filename(&path.to_string_lossy()),
-                path: path.to_string_lossy().to_string(),
-                file_name,
-                size,
-            })
-        })
-        .collect())
+        .map(|path| path.to_string_lossy().to_string())
+        .collect();
+    Ok(audio_meta::scan_audio(&paths))
 }
 
 #[tauri::command]

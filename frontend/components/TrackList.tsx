@@ -28,7 +28,7 @@ export function TrackList({
         <div>
           <h2 className="font-display text-xl text-cream">Tracks</h2>
           <p className="text-xs text-muted">
-            Drop mp3 / ogg / wav files, then name them as they should appear in-game.
+            Drop mp3 / ogg / wav files. Tags fill artist, album, and artwork when present.
           </p>
         </div>
         <button

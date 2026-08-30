@@ -212,11 +212,48 @@ pub struct ImagePreview {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TrackPicture {
+    pub id: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbeddedArt {
+    pub id: String,
+    pub kind: String,
+    pub path: String,
+    pub data_url: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AudioInfo {
     pub path: String,
     pub file_name: String,
     pub suggested_name: String,
     pub size: u64,
+    #[serde(default)]
+    pub artist: Option<String>,
+    #[serde(default)]
+    pub album: Option<String>,
+    #[serde(default)]
+    pub album_artist: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub track_number: Option<u32>,
+    #[serde(default)]
+    pub pictures: Vec<TrackPicture>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioScan {
+    pub tracks: Vec<AudioInfo>,
+    pub pictures: Vec<EmbeddedArt>,
 }
 
 pub fn validate_project(project: &AlbumProject) -> Vec<Issue> {
