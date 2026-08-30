@@ -71,3 +71,29 @@ input[type="color"] {
 .sleeve.flipped {
   transform: rotateY(180deg);
 }
+
+.view-stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.view-pane {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  transition:
+    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.view-pane[data-active="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.view-pane[data-active="false"] {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+}

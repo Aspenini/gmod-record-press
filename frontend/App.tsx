@@ -5,6 +5,7 @@ import { Dropzone } from "./components/Dropzone";
 import { OpenPanel } from "./components/OpenPanel";
 import { Preview } from "./components/Preview";
 import { TrackList } from "./components/TrackList";
+import { ViewSwitch } from "./components/ViewSwitch";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "./lib/api";
 import { defaultAddonTitle, defaultWorkshopDescription, parseWorkshopId, slugify } from "./lib/slug";
@@ -27,6 +28,8 @@ const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tga"];
 const AUDIO_EXT = [".mp3", ".ogg", ".wav"];
 
 type DropTarget = "cover" | "back" | "label" | "tracks" | null;
+type LeftView = "album" | "preview";
+type RightView = "export" | "workshop";
 
 function newTrack(info: AudioInfo): Track {
   return {
@@ -76,6 +79,8 @@ export default function App() {
   const [openError, setOpenError] = useState<string | null>(null);
   const [libraryAddons, setLibraryAddons] = useState<VinylAddonInfo[]>([]);
   const [libraryDir, setLibraryDir] = useState<string | null>(null);
+  const [leftView, setLeftView] = useState<LeftView>("album");
+  const [rightView, setRightView] = useState<RightView>("export");
 
   const project = useMemo<AlbumProject>(
     () => ({
@@ -507,120 +512,167 @@ export default function App() {
       </header>
 
       <main className="grid min-h-0 flex-1 grid-cols-[1.15fr_0.85fr] gap-5 overflow-hidden p-5">
-        <div className="flex min-h-0 flex-col gap-4 overflow-auto pr-1">
-          <section className="rounded-xl border border-line bg-panel p-4">
-            <h2 className="font-display text-xl text-cream">Album</h2>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <Field label="Artist" value={artist} onChange={setArtist} />
-              <Field label="Album title" value={album} onChange={setAlbum} />
-              <Field
-                label="Vinyl ID"
-                value={vinylId}
-                onChange={(v) => {
-                  setIdTouched(true);
-                  setVinylId(slugify(v));
-                }}
-                hint="Used in every file path. Keep it unique."
-              />
-              <label className="block">
-                <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
-                  Addon title
-                </span>
-                <div className="mt-1 w-full border-b border-line py-1 text-cream">
-                  {addonTitle}
-                </div>
-                <span className="mt-1 block text-[11px] text-muted">
-                  Always [Working Record Player] Artist - Album
-                </span>
-              </label>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-line bg-panel p-4">
-            <div className="mb-3 flex items-end justify-between">
-              <h2 className="font-display text-xl text-cream">Artwork</h2>
-              <div className="flex items-center gap-3 text-xs text-muted">
-                <span>Vinyl color</span>
-                <input
-                  type="color"
-                  value={vinylColor}
-                  onChange={(e) => setVinylColor(e.target.value)}
-                  className="h-7 w-10 rounded"
-                />
-                {VINYL_COLORS.map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    title={c.name}
-                    onClick={() => setVinylColor(c.value)}
-                    className="h-5 w-5 rounded-full border border-line"
-                    style={{ background: c.value }}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div data-drop="cover">
-                <Dropzone
-                  label="Front cover"
-                  hint="Square crop for the case"
-                  preview={cover}
-                  required
-                  hot={dropTarget === "cover"}
-                  onPick={() => void pickArt("cover")}
-                  onClear={() => setCover(null)}
-                />
-              </div>
-              <div data-drop="back">
-                <Dropzone
-                  label="Back cover"
-                  hint="Uses the front if empty"
-                  preview={back}
-                  hot={dropTarget === "back"}
-                  onPick={() => void pickArt("back")}
-                  onClear={() => setBack(null)}
-                />
-              </div>
-              <div data-drop="label">
-                <Dropzone
-                  label="Vinyl label"
-                  hint="Center sticker"
-                  preview={label}
-                  hot={dropTarget === "label"}
-                  onPick={() => void pickArt("label")}
-                  onClear={() => setLabel(null)}
-                />
-              </div>
-            </div>
-          </section>
-
-          <div data-drop="tracks" className="flex min-h-64 flex-1 flex-col">
-            <TrackList
-              tracks={tracks}
-              hot={dropTarget === "tracks"}
-              onAdd={() => void addTracks()}
-              onRename={(id, name) =>
-                setTracks((cur) => cur.map((t) => (t.id === id ? { ...t, name } : t)))
-              }
-              onMove={moveTrack}
-              onRemove={(id) => setTracks((cur) => cur.filter((t) => t.id !== id))}
+        <section className="flex min-h-0 flex-col">
+          <div className="mb-3 flex items-center justify-between">
+            <ViewSwitch
+              value={leftView}
+              options={[
+                { id: "album", label: "Album" },
+                { id: "preview", label: "Preview" },
+              ]}
+              onChange={setLeftView}
             />
           </div>
-        </div>
+          <div className="view-stack">
+            <div
+              className="view-pane flex flex-col gap-4 pr-1"
+              data-active={leftView === "album" ? "true" : "false"}
+            >
+              <section className="rounded-xl border border-line bg-panel p-4">
+                <h2 className="font-display text-xl text-cream">Album</h2>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <Field label="Artist" value={artist} onChange={setArtist} />
+                  <Field label="Album title" value={album} onChange={setAlbum} />
+                  <Field
+                    label="Vinyl ID"
+                    value={vinylId}
+                    onChange={(v) => {
+                      setIdTouched(true);
+                      setVinylId(slugify(v));
+                    }}
+                    hint="Used in every file path. Keep it unique."
+                  />
+                  <label className="block">
+                    <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
+                      Addon title
+                    </span>
+                    <div className="mt-1 w-full border-b border-line py-1 text-cream">
+                      {addonTitle}
+                    </div>
+                    <span className="mt-1 block text-[11px] text-muted">
+                      Always [Working Record Player] Artist - Album
+                    </span>
+                  </label>
+                </div>
+              </section>
 
-        <aside className="flex min-h-0 flex-col gap-4 overflow-auto">
-          <section className="rounded-xl border border-line bg-panel p-5">
-            <Preview
-              album={album}
-              artist={artist}
-              vinylColor={vinylColor}
-              cover={cover}
-              back={back}
-              label={label}
+              <section className="rounded-xl border border-line bg-panel p-4">
+                <div className="mb-3 flex items-end justify-between">
+                  <h2 className="font-display text-xl text-cream">Artwork</h2>
+                  <div className="flex items-center gap-3 text-xs text-muted">
+                    <span>Vinyl color</span>
+                    <input
+                      type="color"
+                      value={vinylColor}
+                      onChange={(e) => setVinylColor(e.target.value)}
+                      className="h-7 w-10 rounded"
+                    />
+                    {VINYL_COLORS.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        title={c.name}
+                        onClick={() => setVinylColor(c.value)}
+                        className="h-5 w-5 rounded-full border border-line"
+                        style={{ background: c.value }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div data-drop="cover">
+                    <Dropzone
+                      label="Front cover"
+                      hint="Square crop for the case"
+                      preview={cover}
+                      required
+                      hot={dropTarget === "cover"}
+                      onPick={() => void pickArt("cover")}
+                      onClear={() => setCover(null)}
+                    />
+                  </div>
+                  <div data-drop="back">
+                    <Dropzone
+                      label="Back cover"
+                      hint="Uses the front if empty"
+                      preview={back}
+                      hot={dropTarget === "back"}
+                      onPick={() => void pickArt("back")}
+                      onClear={() => setBack(null)}
+                    />
+                  </div>
+                  <div data-drop="label">
+                    <Dropzone
+                      label="Vinyl label"
+                      hint="Center sticker"
+                      preview={label}
+                      hot={dropTarget === "label"}
+                      onPick={() => void pickArt("label")}
+                      onClear={() => setLabel(null)}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <div data-drop="tracks" className="flex min-h-64 flex-1 flex-col">
+                <TrackList
+                  tracks={tracks}
+                  hot={dropTarget === "tracks"}
+                  onAdd={() => void addTracks()}
+                  onRename={(id, name) =>
+                    setTracks((cur) =>
+                      cur.map((t) => (t.id === id ? { ...t, name } : t)),
+                    )
+                  }
+                  onMove={moveTrack}
+                  onRemove={(id) =>
+                    setTracks((cur) => cur.filter((t) => t.id !== id))
+                  }
+                />
+              </div>
+            </div>
+
+            <div
+              className="view-pane rounded-xl border border-line bg-panel"
+              data-active={leftView === "preview" ? "true" : "false"}
+            >
+              <Preview
+                album={album}
+                artist={artist}
+                vinylColor={vinylColor}
+                cover={cover}
+                back={back}
+                label={label}
+              />
+            </div>
+          </div>
+        </section>
+
+        <aside className="flex min-h-0 flex-col">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <ViewSwitch
+              value={rightView}
+              options={[
+                { id: "export", label: "Export" },
+                { id: "workshop", label: "Workshop" },
+              ]}
+              onChange={(view) => {
+                setRightView(view);
+                if (view === "workshop") void refreshSteam();
+              }}
             />
-          </section>
-
-          <section className="rounded-xl border border-line bg-panel p-4">
+          </div>
+          {busy && progress && (
+            <div className="mb-3 h-1 overflow-hidden rounded bg-line">
+              <div
+                className="h-full bg-gold"
+                style={{ width: `${progress.percent}%` }}
+              />
+            </div>
+          )}
+          <div className="view-stack">
+            <div className="view-pane" data-active={rightView === "export" ? "true" : "false"}>
+              <section className="h-full overflow-auto rounded-xl border border-line bg-panel p-4">
             <h2 className="font-display text-xl text-cream">Export</h2>
             <p className="mt-1 text-xs text-muted">
               Writes a drop-in addon folder. Put it in garrysmod/addons and spawn the album
@@ -681,14 +733,6 @@ export default function App() {
             >
               {busy ? progress?.detail ?? "Exporting…" : "Export album addon"}
             </button>
-            {busy && progress && (
-              <div className="mt-2 h-1 overflow-hidden rounded bg-line">
-                <div
-                  className="h-full bg-gold"
-                  style={{ width: `${progress.percent}%` }}
-                />
-              </div>
-            )}
             {error && <p className="mt-3 text-sm text-label">{error}</p>}
             {result && (
               <div className="mt-3 rounded-lg bg-ink p-3 text-xs text-muted">
@@ -714,9 +758,11 @@ export default function App() {
                 </li>
               ))}
             </ul>
-          </section>
+              </section>
+            </div>
 
-          <section className="rounded-xl border border-line bg-panel p-4">
+            <div className="view-pane" data-active={rightView === "workshop" ? "true" : "false"}>
+              <section className="h-full overflow-auto rounded-xl border border-line bg-panel p-4">
             <h2 className="font-display text-xl text-cream">Workshop</h2>
             <p className="mt-1 text-xs text-muted">
               Publishes through Steamworks, same path as gmpublisher. Steam must be
@@ -842,14 +888,6 @@ export default function App() {
                   ? "Update Workshop item"
                   : "Publish to Workshop"}
             </button>
-            {busy && progress && (
-              <div className="mt-2 h-1 overflow-hidden rounded bg-line">
-                <div
-                  className="h-full bg-gold"
-                  style={{ width: `${progress.percent}%` }}
-                />
-              </div>
-            )}
             {error && <p className="mt-3 text-sm text-label">{error}</p>}
             {workshopResult && (
               <div className="mt-3 rounded-lg bg-ink p-3 text-xs text-muted">
@@ -875,7 +913,9 @@ export default function App() {
                 )}
               </div>
             )}
-          </section>
+              </section>
+            </div>
+          </div>
         </aside>
       </main>
       <OpenPanel
