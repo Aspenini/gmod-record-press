@@ -34,30 +34,22 @@ pub fn export_album(
     fs::create_dir_all(&dest_parent)?;
 
     let addon_dir = dest_parent.join(project.addon_folder_name());
-    if addon_dir.exists() {
-        fs::remove_dir_all(&addon_dir)?;
-    }
-
     let id = project.vinyl_id.trim();
-    let lua_dir = addon_dir.join("lua/autorun");
-    let mat_dir = addon_dir.join("materials/recordplayer").join(id);
-    let sound_dir = addon_dir.join("sound/recordplayer").join(id);
-    fs::create_dir_all(&lua_dir)?;
-    fs::create_dir_all(&mat_dir)?;
-    fs::create_dir_all(&sound_dir)?;
 
-    progress(stage("setup", "Writing addon.json and Lua.", 10));
-
-    let title = project.resolved_title();
-    fs::write(
-        addon_dir.join("addon.json"),
-        serde_json::to_string_pretty(&addon_json(
-            &title,
-            project.workshop_id,
-            &project.vinyl_color,
-            project.vinyl_resolution,
-        ))?,
-    )?;
+    progress(stage("artwork", "Reading cover, back, and label.", 8));
+    let cover_path = project
+        .cover_path
+        .as_ref()
+        .ok_or_else(|| AppError::Message("Front cover is required.".into()))?;
+    let cover = load_required_image(Path::new(cover_path), "front cover")?;
+    let back_img = match project.back_cover_path.as_ref() {
+        Some(p) if !p.trim().is_empty() => load_required_image(Path::new(p), "back cover")?,
+        _ => cover.clone(),
+    };
+    let label_img = match project.label_path.as_ref() {
+        Some(p) if !p.trim().is_empty() => load_required_image(Path::new(p), "vinyl label")?,
+        _ => cover.clone(),
+    };
 
     let mut used_names = Vec::new();
     let mut track_pairs = Vec::new();
@@ -77,6 +69,50 @@ pub fn export_album(
         track_pairs.push((track.name.trim().to_string(), file_name));
     }
 
+    progress(stage("audio", "Snapshotting tracks.", 16));
+    let staging = std::env::temp_dir().join(format!(
+        "gmod-record-press-export-{}-{}",
+        id,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    ));
+    fs::create_dir_all(&staging)?;
+    let staged_tracks = snapshot_tracks(project, &track_pairs, &staging);
+
+    let staged_tracks = match staged_tracks {
+        Ok(tracks) => tracks,
+        Err(err) => {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(err);
+        }
+    };
+
+    if addon_dir.exists() {
+        fs::remove_dir_all(&addon_dir)?;
+    }
+
+    let lua_dir = addon_dir.join("lua/autorun");
+    let mat_dir = addon_dir.join("materials/recordplayer").join(id);
+    let sound_dir = addon_dir.join("sound/recordplayer").join(id);
+    fs::create_dir_all(&lua_dir)?;
+    fs::create_dir_all(&mat_dir)?;
+    fs::create_dir_all(&sound_dir)?;
+
+    progress(stage("setup", "Writing addon.json and Lua.", 22));
+
+    let title = project.resolved_title();
+    fs::write(
+        addon_dir.join("addon.json"),
+        serde_json::to_string_pretty(&addon_json(
+            &title,
+            project.workshop_id,
+            &project.vinyl_color,
+            project.vinyl_resolution,
+        ))?,
+    )?;
+
     let lua_tracks: Vec<(String, String)> = track_pairs
         .iter()
         .map(|(name, file)| (name.clone(), format!("recordplayer/{id}/{file}")))
@@ -86,13 +122,8 @@ pub fn export_album(
         render_autorun(project, &lua_tracks),
     )?;
 
-    progress(stage("artwork", "Preparing cover and case textures.", 22));
+    progress(stage("artwork", "Preparing cover and case textures.", 32));
 
-    let cover_path = project
-        .cover_path
-        .as_ref()
-        .ok_or_else(|| AppError::Message("Front cover is required.".into()))?;
-    let cover = load_image(Path::new(cover_path))?;
     let cover_png = encode_png(&fit_max_edge(&cover, 1024))?;
     fs::write(mat_dir.join("cover.png"), &cover_png)?;
 
@@ -101,10 +132,6 @@ pub fn export_album(
     fs::write(mat_dir.join("case_front.vtf"), &case_front_vtf)?;
     fs::write(mat_dir.join("case_front.vmt"), case_vmt(id, "case_front"))?;
 
-    let back_img = match project.back_cover_path.as_ref() {
-        Some(p) if !p.trim().is_empty() => load_image(Path::new(p))?,
-        _ => cover.clone(),
-    };
     fs::write(
         mat_dir.join("back.png"),
         encode_png(&fit_max_edge(&back_img, 1024))?,
@@ -114,12 +141,8 @@ pub fn export_album(
     fs::write(mat_dir.join("case_back.vtf"), &case_back_vtf)?;
     fs::write(mat_dir.join("case_back.vmt"), case_vmt(id, "case_back"))?;
 
-    progress(stage("vinyl", "Pressing the vinyl texture.", 45));
+    progress(stage("vinyl", "Pressing the vinyl texture.", 52));
 
-    let label_img = match project.label_path.as_ref() {
-        Some(p) if !p.trim().is_empty() => load_image(Path::new(p))?,
-        _ => cover.clone(),
-    };
     fs::write(
         mat_dir.join("label.png"),
         encode_png(&fit_max_edge(&label_img, 1024))?,
@@ -131,9 +154,10 @@ pub fn export_album(
 
     progress(stage("audio", "Copying tracks.", 72));
 
-    for (track, (_, file_name)) in project.tracks.iter().zip(track_pairs.iter()) {
-        fs::copy(&track.path, sound_dir.join(file_name))?;
+    for (src, file_name) in staged_tracks {
+        fs::copy(&src, sound_dir.join(file_name))?;
     }
+    let _ = fs::remove_dir_all(&staging);
 
     let mut files_written = 12 + project.tracks.len();
 
@@ -166,6 +190,43 @@ pub fn export_album(
         workshop_icon_path,
         files_written,
     })
+}
+
+fn load_required_image(path: &Path, what: &str) -> AppResult<image::DynamicImage> {
+    load_image(path).map_err(|err| {
+        AppError::Message(format!(
+            "Could not read {what}:\n{}\n{err}",
+            path.display()
+        ))
+    })
+}
+
+fn snapshot_tracks(
+    project: &AlbumProject,
+    track_pairs: &[(String, String)],
+    staging: &Path,
+) -> AppResult<Vec<(PathBuf, String)>> {
+    let mut staged = Vec::new();
+    for (track, (_, file_name)) in project.tracks.iter().zip(track_pairs.iter()) {
+        let src = Path::new(&track.path);
+        if !src.is_file() {
+            return Err(AppError::Message(format!(
+                "Track \"{}\" audio was not found:\n{}",
+                track.name.trim(),
+                track.path
+            )));
+        }
+        let dest = staging.join(file_name);
+        fs::copy(src, &dest).map_err(|err| {
+            AppError::Message(format!(
+                "Could not snapshot track \"{}\":\n{}\n{err}",
+                track.name.trim(),
+                track.path
+            ))
+        })?;
+        staged.push((dest, file_name.clone()));
+    }
+    Ok(staged)
 }
 
 fn collect_gma_files(root: &Path) -> AppResult<Vec<GmaFile>> {
@@ -270,5 +331,68 @@ mod tests {
         let lua = fs::read_to_string(addon.join("lua/autorun/recordplayer-demo_days.lua")).unwrap();
         assert!(lua.contains("RegisterVinyl(\"demo_days\""));
         assert!(lua.contains("First Song"));
+    }
+
+    #[test]
+    fn reexport_over_existing_addon_does_not_eat_sources() {
+        let dir = tempdir().unwrap();
+        let cover = dir.path().join("cover.png");
+        RgbaImage::from_pixel(64, 64, Rgba([30, 80, 180, 255]))
+            .save(&cover)
+            .unwrap();
+        let audio = dir.path().join("song.mp3");
+        fs::write(&audio, b"ID3fake").unwrap();
+
+        let mut project = AlbumProject {
+            artist: "Test Artist".into(),
+            album: "Demo Days".into(),
+            vinyl_id: "demo_days".into(),
+            addon_title: String::new(),
+            cover_path: Some(cover.to_string_lossy().to_string()),
+            back_cover_path: None,
+            label_path: None,
+            vinyl_color: "#101010".into(),
+            vinyl_resolution: 1024,
+            tracks: vec![Track {
+                name: "First Song".into(),
+                path: audio.to_string_lossy().to_string(),
+            }],
+            workshop_id: None,
+            workshop_description: String::new(),
+            workshop_visibility: "private".into(),
+            workshop_use_template: true,
+        };
+        let dest = dir.path().join("out");
+        let options = ExportOptions {
+            dest_dir: dest.to_string_lossy().to_string(),
+            write_gma: false,
+            write_workshop_icon: false,
+        };
+        let first = export_album(&project, &options, |_| {}).unwrap();
+        let addon = PathBuf::from(&first.addon_dir);
+        let exported_cover = addon.join("materials/recordplayer/demo_days/cover.png");
+        let exported_audio = addon.join("sound/recordplayer/demo_days/song.mp3");
+        assert!(exported_cover.is_file());
+        assert!(exported_audio.is_file());
+
+        project.cover_path = Some(exported_cover.to_string_lossy().to_string());
+        project.tracks[0].path = exported_audio.to_string_lossy().to_string();
+
+        let second = export_album(&project, &options, |_| {}).unwrap();
+        let addon = PathBuf::from(&second.addon_dir);
+        assert!(addon
+            .join("materials/recordplayer/demo_days/cover.png")
+            .is_file());
+        assert!(addon
+            .join("sound/recordplayer/demo_days/song.mp3")
+            .is_file());
+        assert!(addon
+            .join("materials/recordplayer/demo_days/back.png")
+            .is_file());
+        assert!(addon
+            .join("materials/recordplayer/demo_days/label.png")
+            .is_file());
+        let copied = fs::read(addon.join("sound/recordplayer/demo_days/song.mp3")).unwrap();
+        assert_eq!(copied, b"ID3fake");
     }
 }
