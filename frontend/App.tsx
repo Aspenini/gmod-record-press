@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import packageInfo from "../package.json";
 import { Dropzone } from "./components/Dropzone";
 import { MetadataPicker } from "./components/MetadataPicker";
 import { OpenPanel } from "./components/OpenPanel";
@@ -576,8 +577,16 @@ export default function App() {
             className="h-10 w-10 rounded-md"
           />
           <div>
-            <div className="text-[11px] tracking-[0.28em] text-gold uppercase">
-              Garry's Mod
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] tracking-[0.28em] text-gold uppercase">
+                Garry's Mod
+              </span>
+              <span
+                className="text-[11px] tracking-[0.28em] text-cream uppercase"
+                title={`GMod Record Press version ${packageInfo.version}`}
+              >
+                v{packageInfo.version}
+              </span>
             </div>
             <h1 className="font-display text-2xl text-cream">
               GMod Record Press
