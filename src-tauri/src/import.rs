@@ -1,7 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::model::{AlbumProject, Track, VinylAddonInfo, VinylLibrary};
 use crate::steam;
-use crate::vinyl_art::LABEL_RATIO;
+use crate::vinyl_art::{label_side, FACE_CENTERS};
 use crate::vtf_encode::{decode_dxt1_vtf, encode_png, load_image, preview_data_url};
 use image::GenericImageView;
 use std::fs;
@@ -180,12 +180,18 @@ fn png_or_vtf(
     Some(out)
 }
 
+/// Cut the label back out of a vinyl sheet. The sheet is not a picture of a
+/// record — the label sits on one of the two disc islands the model's UVs point
+/// at, so crop there rather than at the middle of the texture. This only runs on
+/// addons that shipped no `label.png` — someone else's, since this app always
+/// writes one — so it stays an axis-aligned crop rather than trying to undo the
+/// face's UV rotation, which those sheets will not have applied.
 fn crop_label(img: image::DynamicImage) -> image::DynamicImage {
     let (w, h) = img.dimensions();
-    let side = ((w.min(h) as f32) * LABEL_RATIO * 2.0).round() as u32;
-    let side = side.max(1).min(w.min(h));
-    let x = (w - side) / 2;
-    let y = (h - side) / 2;
+    let side = label_side(w.min(h)).max(1).min(w.min(h));
+    let (cu, cv) = FACE_CENTERS[0];
+    let x = ((cu * w as f32) as u32).saturating_sub(side / 2).min(w - side);
+    let y = ((cv * h as f32) as u32).saturating_sub(side / 2).min(h - side);
     img.crop_imm(x, y, side, side)
 }
 

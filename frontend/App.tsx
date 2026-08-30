@@ -703,9 +703,9 @@ export default function App() {
                 onChange={(e) => setVinylResolution(Number(e.target.value))}
                 className="rounded border border-line bg-ink px-2 py-1 text-cream"
               >
-                <option value={1024}>1024 — light</option>
-                <option value={2048}>2048 — default</option>
-                <option value={4096}>4096 — official size</option>
+                <option value={1024}>1024 — light (194px label)</option>
+                <option value={2048}>2048 — default (388px label)</option>
+                <option value={4096}>4096 — official size (776px label)</option>
               </select>
             </label>
             <label className="mt-2 flex items-center gap-2 text-sm text-muted">

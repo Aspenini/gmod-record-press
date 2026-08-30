@@ -101,10 +101,9 @@ function VinylFace({
         <div
           className="absolute left-1/2 top-1/2 overflow-hidden rounded-full"
           style={{
-            width: "35%",
-            height: "35%",
+            width: "32.6%",
+            height: "32.6%",
             transform: "translate(-50%, -50%)",
-            boxShadow: "0 0 0 4px #efe6d4",
           }}
         >
           {sticker ? (

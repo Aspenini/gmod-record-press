@@ -105,9 +105,6 @@ pub fn decode_dxt1_vtf(bytes: &[u8]) -> AppResult<DynamicImage> {
     let width = u16::from_le_bytes(bytes[16..18].try_into().unwrap()) as u32;
     let height = u16::from_le_bytes(bytes[18..20].try_into().unwrap()) as u32;
     let format = i32::from_le_bytes(bytes[52..56].try_into().unwrap());
-    let minor = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
-    let low_w = *bytes.get(61).unwrap_or(&16) as u32;
-    let low_h = *bytes.get(62).unwrap_or(&16) as u32;
     if format != IMAGE_FORMAT_DXT1 {
         return Err(AppError::Vtf(format!("Unsupported VTF format {format}.")));
     }
@@ -115,23 +112,13 @@ pub fn decode_dxt1_vtf(bytes: &[u8]) -> AppResult<DynamicImage> {
         return Err(AppError::Vtf("VTF header is invalid.".into()));
     }
 
-    let mut offset = header_size;
-    offset += bc1_size(low_w, low_h);
+    // VTF always stores the low-res thumbnail first and then the mip chain from
+    // smallest to largest, in every version, so the full-size image is the tail.
     let full = bc1_size(width, height);
-    if offset + full > bytes.len() {
+    if bytes.len() < header_size + full {
         return Err(AppError::Vtf("VTF image data is truncated.".into()));
     }
-
-    // Official 7.3+ stores largest mip first. This app writes 7.2 smallest-first.
-    let slice = if minor >= 3 {
-        &bytes[offset..offset + full]
-    } else {
-        let end = bytes.len();
-        if end < full {
-            return Err(AppError::Vtf("VTF image data is truncated.".into()));
-        }
-        &bytes[end - full..end]
-    };
+    let slice = &bytes[bytes.len() - full..];
 
     let w = width as usize;
     let h = height as usize;

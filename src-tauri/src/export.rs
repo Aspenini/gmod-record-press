@@ -70,13 +70,18 @@ pub fn export_album(
     }
 
     progress(stage("audio", "Snapshotting tracks.", 16));
+    // The counter matters: two exports of the same album started in the same
+    // millisecond would otherwise share a staging dir, and the first to finish
+    // would delete the other's snapshot out from under it.
+    static EXPORT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let staging = std::env::temp_dir().join(format!(
-        "gmod-record-press-export-{}-{}",
+        "gmod-record-press-export-{}-{}-{}",
         id,
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis()
+            .as_millis(),
+        EXPORT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     fs::create_dir_all(&staging)?;
     let staged_tracks = snapshot_tracks(project, &track_pairs, &staging);
