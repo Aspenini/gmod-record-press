@@ -88,12 +88,21 @@ pub fn vinyl_vmt(id: &str) -> String {
     )
 }
 
-pub fn addon_json(title: &str, workshop_id: Option<u64>) -> serde_json::Value {
+pub fn addon_json(
+    title: &str,
+    workshop_id: Option<u64>,
+    vinyl_color: &str,
+    vinyl_resolution: u32,
+) -> serde_json::Value {
     let mut value = serde_json::json!({
         "title": title,
         "type": "entity",
         "tags": ["fun", "realism", "roleplay"],
-        "ignore": []
+        "ignore": [],
+        "recordpress": {
+            "vinylColor": vinyl_color,
+            "vinylResolution": vinyl_resolution
+        }
     });
     if let Some(id) = workshop_id {
         value["workshopid"] = serde_json::json!(id);

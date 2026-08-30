@@ -51,7 +51,12 @@ pub fn export_album(
     let title = project.resolved_title();
     fs::write(
         addon_dir.join("addon.json"),
-        serde_json::to_string_pretty(&addon_json(&title, project.workshop_id))?,
+        serde_json::to_string_pretty(&addon_json(
+            &title,
+            project.workshop_id,
+            &project.vinyl_color,
+            project.vinyl_resolution,
+        ))?,
     )?;
 
     let mut used_names = Vec::new();
@@ -100,6 +105,10 @@ pub fn export_album(
         Some(p) if !p.trim().is_empty() => load_image(Path::new(p))?,
         _ => cover.clone(),
     };
+    fs::write(
+        mat_dir.join("back.png"),
+        encode_png(&fit_max_edge(&back_img, 1024))?,
+    )?;
     let case_back = cover_square(&back_img, 512);
     let case_back_vtf = encode_dxt1_vtf(&case_back)?;
     fs::write(mat_dir.join("case_back.vtf"), &case_back_vtf)?;
@@ -111,6 +120,10 @@ pub fn export_album(
         Some(p) if !p.trim().is_empty() => load_image(Path::new(p))?,
         _ => cover.clone(),
     };
+    fs::write(
+        mat_dir.join("label.png"),
+        encode_png(&fit_max_edge(&label_img, 1024))?,
+    )?;
     let vinyl = render_vinyl(&label_img, &project.vinyl_color, project.vinyl_resolution);
     let vinyl_vtf = encode_dxt1_vtf(&vinyl)?;
     fs::write(mat_dir.join("vinyl.vtf"), &vinyl_vtf)?;
@@ -122,7 +135,7 @@ pub fn export_album(
         fs::copy(&track.path, sound_dir.join(file_name))?;
     }
 
-    let mut files_written = 10 + project.tracks.len();
+    let mut files_written = 12 + project.tracks.len();
 
     let workshop_icon_path = if options.write_workshop_icon {
         progress(stage("icon", "Writing workshop icon.", 84));
@@ -241,6 +254,12 @@ mod tests {
             .is_file());
         assert!(addon
             .join("materials/recordplayer/demo_days/vinyl.vtf")
+            .is_file());
+        assert!(addon
+            .join("materials/recordplayer/demo_days/back.png")
+            .is_file());
+        assert!(addon
+            .join("materials/recordplayer/demo_days/label.png")
             .is_file());
         assert!(addon
             .join("sound/recordplayer/demo_days/song.mp3")

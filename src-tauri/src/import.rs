@@ -1,7 +1,9 @@
 use crate::error::{AppError, AppResult};
 use crate::model::{AlbumProject, Track, VinylAddonInfo, VinylLibrary};
 use crate::steam;
-use crate::vtf_encode::{load_image, preview_data_url};
+use crate::vinyl_art::LABEL_RATIO;
+use crate::vtf_encode::{decode_dxt1_vtf, encode_png, load_image, preview_data_url};
+use image::GenericImageView;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -82,11 +84,32 @@ fn parse_addon_dir(root: &Path) -> Option<ParsedAddon> {
         return None;
     }
 
-    let cover = root
-        .join("materials/recordplayer")
-        .join(id)
-        .join("cover.png");
-    let cover_path = cover.is_file().then_some(cover);
+    let mat = root.join("materials/recordplayer").join(id);
+    let recover = std::env::temp_dir()
+        .join("gmod-record-press")
+        .join("recovered")
+        .join(id);
+
+    let cover_path = png_or_vtf(&mat, "cover.png", "case_front.vtf", &recover, None);
+    let back_cover_path = png_or_vtf(&mat, "back.png", "case_back.vtf", &recover, None);
+    let label_path = png_or_vtf(&mat, "label.png", "vinyl.vtf", &recover, Some(crop_label));
+
+    let meta = read_press_meta(root);
+    let vinyl_color = meta
+        .vinyl_color
+        .or_else(|| vinyl_color_from_vtf(&mat.join("vinyl.vtf")))
+        .unwrap_or_else(|| "#141414".into());
+    let vinyl_resolution = meta
+        .vinyl_resolution
+        .filter(|w| matches!(w, 1024 | 2048 | 4096))
+        .or_else(|| {
+            fs::read(mat.join("vinyl.vtf"))
+                .ok()
+                .and_then(|bytes| decode_dxt1_vtf(&bytes).ok())
+                .map(|img| img.width())
+                .filter(|w| matches!(w, 1024 | 2048 | 4096))
+        })
+        .unwrap_or(2048);
 
     let sound_dir = root.join("sound/recordplayer").join(id);
     let tracks = vinyl
@@ -117,10 +140,14 @@ fn parse_addon_dir(root: &Path) -> Option<ParsedAddon> {
             cover_path: cover_path
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
-            back_cover_path: None,
-            label_path: None,
-            vinyl_color: "#141414".into(),
-            vinyl_resolution: 2048,
+            back_cover_path: back_cover_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            label_path: label_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            vinyl_color,
+            vinyl_resolution,
             tracks,
             workshop_id,
             workshop_description: String::new(),
@@ -129,6 +156,79 @@ fn parse_addon_dir(root: &Path) -> Option<ParsedAddon> {
         },
         cover_path,
     })
+}
+
+fn png_or_vtf(
+    mat: &Path,
+    png_name: &str,
+    vtf_name: &str,
+    recover_dir: &Path,
+    transform: Option<fn(image::DynamicImage) -> image::DynamicImage>,
+) -> Option<PathBuf> {
+    let png = mat.join(png_name);
+    if png.is_file() {
+        return Some(png);
+    }
+    let bytes = fs::read(mat.join(vtf_name)).ok()?;
+    let mut img = decode_dxt1_vtf(&bytes).ok()?;
+    if let Some(transform) = transform {
+        img = transform(img);
+    }
+    fs::create_dir_all(recover_dir).ok()?;
+    let out = recover_dir.join(png_name);
+    fs::write(&out, encode_png(&img).ok()?).ok()?;
+    Some(out)
+}
+
+fn crop_label(img: image::DynamicImage) -> image::DynamicImage {
+    let (w, h) = img.dimensions();
+    let side = ((w.min(h) as f32) * LABEL_RATIO * 2.0).round() as u32;
+    let side = side.max(1).min(w.min(h));
+    let x = (w - side) / 2;
+    let y = (h - side) / 2;
+    img.crop_imm(x, y, side, side)
+}
+
+struct PressMeta {
+    vinyl_color: Option<String>,
+    vinyl_resolution: Option<u32>,
+}
+
+fn read_press_meta(root: &Path) -> PressMeta {
+    let empty = PressMeta {
+        vinyl_color: None,
+        vinyl_resolution: None,
+    };
+    let json = fs::read_to_string(root.join("addon.json")).ok();
+    let Some(json) = json else {
+        return empty;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&json) else {
+        return empty;
+    };
+    let Some(meta) = value.get("recordpress") else {
+        return empty;
+    };
+    PressMeta {
+        vinyl_color: meta
+            .get("vinylColor")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .filter(|s| !s.trim().is_empty()),
+        vinyl_resolution: meta.get("vinylResolution").and_then(|v| v.as_u64()).map(|n| n as u32),
+    }
+}
+
+fn vinyl_color_from_vtf(path: &Path) -> Option<String> {
+    let img = decode_dxt1_vtf(&fs::read(path).ok()?).ok()?;
+    let (w, h) = img.dimensions();
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let x = (w as f32 * 0.78) as u32;
+    let y = h / 2;
+    let pixel = img.get_pixel(x.min(w - 1), y.min(h - 1));
+    Some(format!("#{:02x}{:02x}{:02x}", pixel[0], pixel[1], pixel[2]))
 }
 
 fn addon_info(root: &Path) -> Option<VinylAddonInfo> {
@@ -510,5 +610,9 @@ mod tests {
         assert_eq!(project.tracks.len(), 8);
         assert!(project.cover_path.as_ref().unwrap().ends_with("cover.png"));
         assert!(Path::new(&project.tracks[0].path).is_file());
+        assert!(project.back_cover_path.as_ref().is_some());
+        assert!(project.label_path.as_ref().is_some());
+        assert!(Path::new(project.back_cover_path.as_ref().unwrap()).is_file());
+        assert!(Path::new(project.label_path.as_ref().unwrap()).is_file());
     }
 }

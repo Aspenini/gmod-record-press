@@ -4,7 +4,7 @@ use rayon::prelude::*;
 
 /// Label radius as a fraction of the disc radius, measured against the
 /// official Paranoid vinyl (center sticker occupies ~35% of the diameter).
-const LABEL_RATIO: f32 = 0.35;
+pub const LABEL_RATIO: f32 = 0.35;
 const HOLE_RATIO: f32 = 0.035;
 const RIM_RATIO: f32 = 0.985;
 

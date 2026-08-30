@@ -97,6 +97,59 @@ pub fn encode_dxt1_vtf(img: &DynamicImage) -> AppResult<Vec<u8>> {
     Ok(data)
 }
 
+pub fn decode_dxt1_vtf(bytes: &[u8]) -> AppResult<DynamicImage> {
+    if bytes.len() < 80 || &bytes[0..4] != b"VTF\0" {
+        return Err(AppError::Vtf("Not a VTF texture.".into()));
+    }
+    let header_size = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let width = u16::from_le_bytes(bytes[16..18].try_into().unwrap()) as u32;
+    let height = u16::from_le_bytes(bytes[18..20].try_into().unwrap()) as u32;
+    let format = i32::from_le_bytes(bytes[52..56].try_into().unwrap());
+    let minor = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
+    let low_w = *bytes.get(61).unwrap_or(&16) as u32;
+    let low_h = *bytes.get(62).unwrap_or(&16) as u32;
+    if format != IMAGE_FORMAT_DXT1 {
+        return Err(AppError::Vtf(format!("Unsupported VTF format {format}.")));
+    }
+    if width == 0 || height == 0 || header_size >= bytes.len() {
+        return Err(AppError::Vtf("VTF header is invalid.".into()));
+    }
+
+    let mut offset = header_size;
+    offset += bc1_size(low_w, low_h);
+    let full = bc1_size(width, height);
+    if offset + full > bytes.len() {
+        return Err(AppError::Vtf("VTF image data is truncated.".into()));
+    }
+
+    // Official 7.3+ stores largest mip first. This app writes 7.2 smallest-first.
+    let slice = if minor >= 3 {
+        &bytes[offset..offset + full]
+    } else {
+        let end = bytes.len();
+        if end < full {
+            return Err(AppError::Vtf("VTF image data is truncated.".into()));
+        }
+        &bytes[end - full..end]
+    };
+
+    let w = width as usize;
+    let h = height as usize;
+    let mut rgba = vec![0u8; w * h * 4];
+    Format::Bc1.decompress(slice, w, h, &mut rgba);
+    RgbaImage::from_raw(width, height, rgba)
+        .map(DynamicImage::ImageRgba8)
+        .ok_or_else(|| AppError::Vtf("Could not build image from VTF.".into()))
+}
+
+fn bc1_size(w: u32, h: u32) -> usize {
+    if w < 4 || h < 4 {
+        Format::Bc1.compressed_size(4, 4)
+    } else {
+        Format::Bc1.compressed_size(w as usize, h as usize)
+    }
+}
+
 fn write_header_72(data: &mut Vec<u8>, width: u16, height: u16, mips: u8, low_w: u8, low_h: u8) {
     data.extend_from_slice(b"VTF\0");
     data.extend_from_slice(&7u32.to_le_bytes());
@@ -217,5 +270,33 @@ mod tests {
         let bytes = encode_dxt1_vtf(&img).expect("encode");
         assert_eq!(bytes[61], 16);
         assert_eq!(bytes[62], 16);
+    }
+
+    #[test]
+    fn vtf_roundtrip_keeps_color() {
+        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            32,
+            32,
+            image::Rgba([200, 40, 40, 255]),
+        ));
+        let bytes = encode_dxt1_vtf(&img).expect("encode");
+        let decoded = decode_dxt1_vtf(&bytes).expect("decode");
+        let pixel = decoded.to_rgba8().get_pixel(16, 16).0;
+        assert!(pixel[0] > 120, "red channel {pixel:?}");
+        assert!(pixel[1] < 90, "green channel {pixel:?}");
+    }
+
+    #[test]
+    fn decodes_reference_case_back_vtf() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../reference/working_record_player_black_sabbath_paranoid/materials/recordplayer/paranoid/case_back.vtf",
+        );
+        if !path.is_file() {
+            return;
+        }
+        let bytes = std::fs::read(path).unwrap();
+        let img = decode_dxt1_vtf(&bytes).expect("decode official vtf");
+        assert_eq!(img.width(), 512);
+        assert_eq!(img.height(), 512);
     }
 }
