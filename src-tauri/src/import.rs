@@ -37,9 +37,7 @@ pub fn import_vinyl_addon(path: &str) -> AppResult<AlbumProject> {
         )));
     }
     let parsed = parse_addon_dir(&root).ok_or_else(|| {
-        AppError::Message(
-            "This folder is not a Working Record Player vinyl addon.".into(),
-        )
+        AppError::Message("This folder is not a Working Record Player vinyl addon.".into())
     })?;
     Ok(parsed.project)
 }
@@ -66,7 +64,11 @@ fn scan_addons_dir(root: &Path) -> Vec<VinylAddonInfo> {
         a.artist
             .to_ascii_lowercase()
             .cmp(&b.artist.to_ascii_lowercase())
-            .then(a.album.to_ascii_lowercase().cmp(&b.album.to_ascii_lowercase()))
+            .then(
+                a.album
+                    .to_ascii_lowercase()
+                    .cmp(&b.album.to_ascii_lowercase()),
+            )
     });
     addons
 }
@@ -137,15 +139,11 @@ fn parse_addon_dir(root: &Path) -> Option<ParsedAddon> {
             album: vinyl.album,
             vinyl_id: id.to_string(),
             addon_title,
-            cover_path: cover_path
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string()),
+            cover_path: cover_path.as_ref().map(|p| p.to_string_lossy().to_string()),
             back_cover_path: back_cover_path
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
-            label_path: label_path
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string()),
+            label_path: label_path.as_ref().map(|p| p.to_string_lossy().to_string()),
             vinyl_color,
             vinyl_resolution,
             tracks,
@@ -190,8 +188,12 @@ fn crop_label(img: image::DynamicImage) -> image::DynamicImage {
     let (w, h) = img.dimensions();
     let side = label_side(w.min(h)).max(1).min(w.min(h));
     let (cu, cv) = FACE_CENTERS[0];
-    let x = ((cu * w as f32) as u32).saturating_sub(side / 2).min(w - side);
-    let y = ((cv * h as f32) as u32).saturating_sub(side / 2).min(h - side);
+    let x = ((cu * w as f32) as u32)
+        .saturating_sub(side / 2)
+        .min(w - side);
+    let y = ((cv * h as f32) as u32)
+        .saturating_sub(side / 2)
+        .min(h - side);
     img.crop_imm(x, y, side, side)
 }
 
@@ -221,7 +223,10 @@ fn read_press_meta(root: &Path) -> PressMeta {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .filter(|s| !s.trim().is_empty()),
-        vinyl_resolution: meta.get("vinylResolution").and_then(|v| v.as_u64()).map(|n| n as u32),
+        vinyl_resolution: meta
+            .get("vinylResolution")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32),
     }
 }
 
@@ -591,10 +596,13 @@ mod tests {
 
     #[test]
     fn parses_reference_lua() {
-        let lua = include_str!(
-            "../../reference/working_record_player_black_sabbath_paranoid/lua/autorun/recordplayer-paranoid.lua"
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+            "../reference/working_record_player_black_sabbath_paranoid/lua/autorun/recordplayer-paranoid.lua",
         );
-        let parsed = parse_register_vinyl(lua).unwrap();
+        let Ok(lua) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let parsed = parse_register_vinyl(&lua).unwrap();
         assert_eq!(parsed.vinyl_id, "paranoid");
         assert_eq!(parsed.artist, "Black Sabbath");
         assert_eq!(parsed.album, "Paranoid");

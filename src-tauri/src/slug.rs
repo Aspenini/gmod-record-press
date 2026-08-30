@@ -1,5 +1,3 @@
-use std::path::Path;
-
 pub fn slugify(input: &str) -> String {
     let mut out = String::new();
     let mut prev_underscore = false;
@@ -39,10 +37,11 @@ pub fn slugify(input: &str) -> String {
 }
 
 pub fn title_from_filename(path: &str) -> String {
-    let stem = Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("Track");
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let stem = match name.rsplit_once('.') {
+        Some((stem, _)) if !stem.is_empty() => stem,
+        _ => name,
+    };
 
     let mut out = String::new();
     let mut prev_space = false;
@@ -117,6 +116,10 @@ mod tests {
             "war pigs luke s wall 2012 remaster"
         );
         assert_eq!(title_from_filename(r"C:\music\Iron Man.mp3"), "Iron Man");
+        assert_eq!(
+            title_from_filename("/home/user/music/Iron Man.mp3"),
+            "Iron Man"
+        );
     }
 
     #[test]

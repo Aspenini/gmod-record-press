@@ -30,7 +30,14 @@ fn copy_steam_api() {
     println!("cargo:rerun-if-changed=build.rs");
 
     #[cfg(target_os = "linux")]
-    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
+    {
+        // Dev builds keep libsteam_api.so next to the binary. Packaged Linux
+        // builds also install it under ../lib/gmod-record-press so linuxdeploy
+        // and the installed /usr/bin wrapper can both resolve it.
+        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib/gmod-record-press");
+    }
     #[cfg(target_os = "macos")]
     println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path");
 
@@ -82,7 +89,11 @@ fn find_steamworks_lib(lib: &str) -> Option<PathBuf> {
 
     if let Ok(entries) = fs::read_dir(&build_dir) {
         for entry in entries.flatten() {
-            if !entry.file_name().to_string_lossy().starts_with("steamworks-sys-") {
+            if !entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("steamworks-sys-")
+            {
                 continue;
             }
             let candidate = entry.path().join("out").join(lib);

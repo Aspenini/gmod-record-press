@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "libsteam_api.so": "libsteam_api.so"
+    },
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/lib/gmod-record-press/libsteam_api.so": "libsteam_api.so"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/lib/gmod-record-press/libsteam_api.so": "libsteam_api.so"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/lib/gmod-record-press/libsteam_api.so": "libsteam_api.so"
+        }
+      }
+    }
+  }
+}

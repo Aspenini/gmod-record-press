@@ -11,9 +11,10 @@ install:
 dev: install
     bun run tauri dev
 
-# Release exe and installer
+# Release app and installer
 build: install
-    bun run tauri build
+    # linuxdeploy's bundled strip cannot handle RELR (.relr.dyn) on modern glibc.
+    {{ if os() == "linux" { "NO_STRIP=1" } else { "" } }} bun run tauri build
 
 # Rust tests
 test:
