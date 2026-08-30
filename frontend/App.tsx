@@ -496,13 +496,20 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b border-line px-6 py-3">
-        <div>
-          <div className="text-[11px] tracking-[0.28em] text-gold uppercase">
-            Garry's Mod
+        <div className="flex items-center gap-3">
+          <img
+            src="/favicon.png"
+            alt=""
+            className="h-10 w-10 rounded-md"
+          />
+          <div>
+            <div className="text-[11px] tracking-[0.28em] text-gold uppercase">
+              Garry's Mod
+            </div>
+            <h1 className="font-display text-2xl text-cream">
+              GMod Record Press
+            </h1>
           </div>
-          <h1 className="font-display text-2xl text-cream">
-            GMod Record Press
-          </h1>
         </div>
         <div className="flex gap-2 text-xs">
           <GhostButton onClick={reset}>New</GhostButton>
