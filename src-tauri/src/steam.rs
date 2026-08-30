@@ -63,6 +63,7 @@ fn steam_root_candidates() -> Vec<PathBuf> {
 
     #[cfg(windows)]
     {
+        candidates.extend(windows_registry_steam_candidates());
         if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
             candidates.push(PathBuf::from(pf86).join("Steam"));
         }
@@ -97,6 +98,37 @@ fn steam_root_candidates() -> Vec<PathBuf> {
         if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
             let xdg = PathBuf::from(xdg);
             candidates.push(xdg.join("Steam"));
+        }
+    }
+
+    candidates
+}
+
+#[cfg(windows)]
+fn windows_registry_steam_candidates() -> Vec<PathBuf> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+
+    let mut candidates = Vec::new();
+    let keys = [
+        (HKEY_CURRENT_USER, r"Software\Valve\Steam"),
+        (HKEY_LOCAL_MACHINE, r"Software\Valve\Steam"),
+        (HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Valve\Steam"),
+    ];
+
+    for (hive, path) in keys {
+        let Ok(key) = RegKey::predef(hive).open_subkey(path) else {
+            continue;
+        };
+        for value_name in ["SteamPath", "InstallPath"] {
+            if let Ok(value) = key.get_value::<String, _>(value_name) {
+                candidates.push(PathBuf::from(value));
+            }
+        }
+        if let Ok(value) = key.get_value::<String, _>("SteamExe") {
+            if let Some(parent) = Path::new(&value).parent() {
+                candidates.push(parent.to_path_buf());
+            }
         }
     }
 

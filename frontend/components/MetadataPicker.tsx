@@ -84,11 +84,16 @@ export function MetadataPicker({
       onClick={onSkip}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="metadata-picker-title"
         className="flex max-h-[min(760px,92vh)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-line px-5 py-4">
-          <h2 className="font-display text-2xl text-cream">Choose album info</h2>
+          <h2 id="metadata-picker-title" className="font-display text-2xl text-cream">
+            Choose album info
+          </h2>
           <p className="mt-1 text-xs text-muted">
             These tracks disagree on some tags. Pick one value for each field, or skip
             and fill it yourself.

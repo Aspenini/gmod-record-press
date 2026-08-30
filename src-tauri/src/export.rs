@@ -9,6 +9,9 @@ use crate::vtf_encode::{
 };
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static EXPORT_SEQ: AtomicU64 = AtomicU64::new(0);
 
 pub fn export_album(
     project: &AlbumProject,
@@ -71,36 +74,35 @@ pub fn export_album(
 
     progress(stage("audio", "Snapshotting tracks.", 16));
     // The counter matters: two exports of the same album started in the same
-    // millisecond would otherwise share a staging dir, and the first to finish
-    // would delete the other's snapshot out from under it.
-    static EXPORT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    // millisecond would otherwise share temporary paths.
+    let nonce = export_nonce();
     let staging = std::env::temp_dir().join(format!(
-        "gmod-record-press-export-{}-{}-{}",
-        id,
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
-        EXPORT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        "gmod-record-press-export-{id}-{nonce}"
     ));
     fs::create_dir_all(&staging)?;
-    let staged_tracks = snapshot_tracks(project, &track_pairs, &staging);
+    let building_dir = dest_parent.join(format!(
+        ".{}.building-{nonce}",
+        project.addon_folder_name()
+    ));
+    let pending_gma = dest_parent.join(format!(
+        ".{}.gma.building-{nonce}",
+        project.addon_folder_name()
+    ));
+    let pending_icon = dest_parent.join(format!(
+        ".{}.jpg.building-{nonce}",
+        project.addon_folder_name()
+    ));
+    let _cleanup = CleanupPaths(vec![
+        staging.clone(),
+        building_dir.clone(),
+        pending_gma.clone(),
+        pending_icon.clone(),
+    ]);
+    let staged_tracks = snapshot_tracks(project, &track_pairs, &staging)?;
 
-    let staged_tracks = match staged_tracks {
-        Ok(tracks) => tracks,
-        Err(err) => {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(err);
-        }
-    };
-
-    if addon_dir.exists() {
-        fs::remove_dir_all(&addon_dir)?;
-    }
-
-    let lua_dir = addon_dir.join("lua/autorun");
-    let mat_dir = addon_dir.join("materials/recordplayer").join(id);
-    let sound_dir = addon_dir.join("sound/recordplayer").join(id);
+    let lua_dir = building_dir.join("lua/autorun");
+    let mat_dir = building_dir.join("materials/recordplayer").join(id);
+    let sound_dir = building_dir.join("sound/recordplayer").join(id);
     fs::create_dir_all(&lua_dir)?;
     fs::create_dir_all(&mat_dir)?;
     fs::create_dir_all(&sound_dir)?;
@@ -109,7 +111,7 @@ pub fn export_album(
 
     let title = project.resolved_title();
     fs::write(
-        addon_dir.join("addon.json"),
+        building_dir.join("addon.json"),
         serde_json::to_string_pretty(&addon_json(
             &title,
             project.workshop_id,
@@ -162,14 +164,13 @@ pub fn export_album(
     for (src, file_name) in staged_tracks {
         fs::copy(&src, sound_dir.join(file_name))?;
     }
-    let _ = fs::remove_dir_all(&staging);
 
     let mut files_written = 12 + project.tracks.len();
 
     let workshop_icon_path = if options.write_workshop_icon {
         progress(stage("icon", "Writing workshop icon.", 84));
         let icon_path = dest_parent.join(format!("{}.jpg", project.addon_folder_name()));
-        fs::write(&icon_path, encode_workshop_jpeg(&cover)?)?;
+        fs::write(&pending_icon, encode_workshop_jpeg(&cover)?)?;
         files_written += 1;
         Some(icon_path.to_string_lossy().to_string())
     } else {
@@ -178,14 +179,23 @@ pub fn export_album(
 
     let gma_path = if options.write_gma {
         progress(stage("gma", "Packing .gma.", 90));
-        let packed = collect_gma_files(&addon_dir)?;
+        let packed = collect_gma_files(&building_dir)?;
         let gma = dest_parent.join(format!("{}.gma", project.addon_folder_name()));
-        write_gma(&gma, &title, &packed)?;
+        write_gma(&pending_gma, &title, &packed)?;
         files_written += 1;
         Some(gma.to_string_lossy().to_string())
     } else {
         None
     };
+
+    progress(stage("commit", "Replacing the previous export.", 96));
+    replace_path(&building_dir, &addon_dir, &nonce)?;
+    if let Some(path) = &workshop_icon_path {
+        replace_path(&pending_icon, Path::new(path), &nonce)?;
+    }
+    if let Some(path) = &gma_path {
+        replace_path(&pending_gma, Path::new(path), &nonce)?;
+    }
 
     progress(stage("done", "Album addon is ready.", 100));
 
@@ -195,6 +205,72 @@ pub fn export_album(
         workshop_icon_path,
         files_written,
     })
+}
+
+fn export_nonce() -> String {
+    format!(
+        "{}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+        EXPORT_SEQ.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+/// Replaces a file or directory without deleting the previous export first.
+/// If the final rename fails, the old path is restored from the backup.
+fn replace_path(staged: &Path, destination: &Path, nonce: &str) -> AppResult<()> {
+    if !destination.exists() {
+        return fs::rename(staged, destination).map_err(Into::into);
+    }
+
+    let file_name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("export");
+    let backup = destination.with_file_name(format!(".{file_name}.backup-{nonce}"));
+    fs::rename(destination, &backup).map_err(|err| {
+        AppError::Message(format!(
+            "Could not prepare the previous export for replacement:\n{}\n{err}",
+            destination.display()
+        ))
+    })?;
+
+    match fs::rename(staged, destination) {
+        Ok(()) => {
+            if backup.is_dir() {
+                let _ = fs::remove_dir_all(backup);
+            } else {
+                let _ = fs::remove_file(backup);
+            }
+            Ok(())
+        }
+        Err(replace_err) => match fs::rename(&backup, destination) {
+            Ok(()) => Err(AppError::Message(format!(
+                "Could not install the new export; the previous export was restored:\n{}\n{replace_err}",
+                destination.display()
+            ))),
+            Err(restore_err) => Err(AppError::Message(format!(
+                "Could not install the new export or restore the previous one. Your previous export is preserved at:\n{}\nReplacement error: {replace_err}\nRestore error: {restore_err}",
+                backup.display()
+            ))),
+        },
+    }
+}
+
+struct CleanupPaths(Vec<PathBuf>);
+
+impl Drop for CleanupPaths {
+    fn drop(&mut self) {
+        for path in &self.0 {
+            if path.is_dir() {
+                let _ = fs::remove_dir_all(path);
+            } else {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
 }
 
 fn load_required_image(path: &Path, what: &str) -> AppResult<image::DynamicImage> {
@@ -399,5 +475,23 @@ mod tests {
             .is_file());
         let copied = fs::read(addon.join("sound/recordplayer/demo_days/song.mp3")).unwrap();
         assert_eq!(copied, b"ID3fake");
+    }
+
+    #[test]
+    fn failed_replacement_restores_previous_export() {
+        let dir = tempdir().unwrap();
+        let destination = dir.path().join("recordplayer_demo");
+        fs::create_dir_all(&destination).unwrap();
+        fs::write(destination.join("previous.txt"), b"keep me").unwrap();
+
+        let missing_staged = dir.path().join("missing-building-dir");
+        let result = replace_path(&missing_staged, &destination, "test");
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read(destination.join("previous.txt")).unwrap(),
+            b"keep me"
+        );
+        assert!(!dir.path().join(".recordplayer_demo.backup-test").exists());
     }
 }

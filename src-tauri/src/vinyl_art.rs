@@ -148,7 +148,7 @@ fn sample_label(sticker: &RgbaImage, lx: f32, ly: f32) -> [u8; 3] {
     let ty = fy - y0 as f32;
 
     let mut out = [0u8; 3];
-    for c in 0..3 {
+    for (c, channel) in out.iter_mut().enumerate() {
         let top = lerp(
             sticker.get_pixel(x0, y0)[c] as f32,
             sticker.get_pixel(x1, y0)[c] as f32,
@@ -159,7 +159,7 @@ fn sample_label(sticker: &RgbaImage, lx: f32, ly: f32) -> [u8; 3] {
             sticker.get_pixel(x1, y1)[c] as f32,
             tx,
         );
-        out[c] = lerp(top, bottom, ty).round().clamp(0.0, 255.0) as u8;
+        *channel = lerp(top, bottom, ty).round().clamp(0.0, 255.0) as u8;
     }
     out
 }

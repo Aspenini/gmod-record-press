@@ -1418,6 +1418,7 @@ dependencies = [
  "texpresso",
  "thiserror 2.0.20",
  "walkdir",
+ "winreg",
 ]
 
 [[package]]

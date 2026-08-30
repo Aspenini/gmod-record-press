@@ -33,18 +33,25 @@ fn validate(project: AlbumProject) -> Vec<Issue> {
 }
 
 #[tauri::command]
-fn suggest_gmod_addons_dir() -> Option<String> {
-    steam::suggest_gmod_addons_dir()
+async fn suggest_gmod_addons_dir() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(steam::suggest_gmod_addons_dir)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn audio_info(paths: Vec<String>) -> AudioScan {
-    audio_meta::scan_audio(&paths)
+async fn audio_info(paths: Vec<String>) -> Result<AudioScan, String> {
+    tauri::async_runtime::spawn_blocking(move || audio_meta::scan_audio(&paths))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn read_image_preview(path: String) -> Result<ImagePreview, String> {
-    read_preview(Path::new(&path)).map_err(Into::into)
+async fn read_image_preview(path: String) -> Result<ImagePreview, String> {
+    tauri::async_runtime::spawn_blocking(move || read_preview(Path::new(&path)))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -147,13 +154,18 @@ fn load_project(path: String) -> Result<AlbumProject, String> {
 }
 
 #[tauri::command]
-fn list_vinyl_addons(scan_dir: Option<String>) -> VinylLibrary {
-    import::list_vinyl_library(scan_dir)
+async fn list_vinyl_addons(scan_dir: Option<String>) -> Result<VinylLibrary, String> {
+    tauri::async_runtime::spawn_blocking(move || import::list_vinyl_library(scan_dir))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn import_vinyl_addon(path: String) -> Result<AlbumProject, String> {
-    import::import_vinyl_addon(&path).map_err(Into::into)
+async fn import_vinyl_addon(path: String) -> Result<AlbumProject, String> {
+    tauri::async_runtime::spawn_blocking(move || import::import_vinyl_addon(&path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -213,13 +225,18 @@ async fn export_addon(
 }
 
 #[tauri::command]
-fn steam_status() -> WorkshopStatus {
-    workshop::status()
+async fn steam_status() -> Result<WorkshopStatus, String> {
+    tauri::async_runtime::spawn_blocking(workshop::status)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn list_workshop_items() -> Result<Vec<WorkshopItem>, String> {
-    workshop::list_my_items().map_err(Into::into)
+async fn list_workshop_items() -> Result<Vec<WorkshopItem>, String> {
+    tauri::async_runtime::spawn_blocking(workshop::list_my_items)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(Into::into)
 }
 
 #[tauri::command]

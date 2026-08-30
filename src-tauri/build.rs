@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=icons/icon.ico");
@@ -60,7 +60,7 @@ fn copy_steam_api() {
     let _ = fs::copy(&src, manifest.join(lib));
 }
 
-fn cargo_build_dir(out_dir: &PathBuf) -> Option<PathBuf> {
+fn cargo_build_dir(out_dir: &Path) -> Option<PathBuf> {
     out_dir.ancestors().find_map(|p| {
         p.file_name()
             .is_some_and(|name| name == "build")
@@ -68,7 +68,7 @@ fn cargo_build_dir(out_dir: &PathBuf) -> Option<PathBuf> {
     })
 }
 
-fn cargo_profile_dir(out_dir: &PathBuf) -> Option<PathBuf> {
+fn cargo_profile_dir(out_dir: &Path) -> Option<PathBuf> {
     cargo_build_dir(out_dir)?.parent().map(PathBuf::from)
 }
 

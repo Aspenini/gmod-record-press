@@ -64,15 +64,31 @@ export function TrackList({
               </div>
             </div>
             <div className="flex items-center gap-1 text-xs text-muted">
-              <button type="button" onClick={() => onMove(track.id, -1)}>
+              <button
+                type="button"
+                aria-label={`Move ${track.name} up`}
+                title="Move up"
+                disabled={index === 0}
+                onClick={() => onMove(track.id, -1)}
+                className="min-h-7 min-w-7 disabled:opacity-25"
+              >
                 ↑
               </button>
-              <button type="button" onClick={() => onMove(track.id, 1)}>
+              <button
+                type="button"
+                aria-label={`Move ${track.name} down`}
+                title="Move down"
+                disabled={index === tracks.length - 1}
+                onClick={() => onMove(track.id, 1)}
+                className="min-h-7 min-w-7 disabled:opacity-25"
+              >
                 ↓
               </button>
               <button
                 type="button"
-                className="text-label"
+                aria-label={`Remove ${track.name}`}
+                title="Remove track"
+                className="min-h-7 min-w-7 text-label"
                 onClick={() => onRemove(track.id)}
               >
                 ✕

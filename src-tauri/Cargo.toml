@@ -2,7 +2,7 @@
 name = "gmod-record-press"
 version = "0.2.0"
 description = "Desktop app for creating Working Record Player album addons for Garry's Mod"
-authors = ["you"]
+authors = ["Aspenini"]
 edition = "2021"
 
 [lib]
@@ -29,6 +29,9 @@ walkdir = "2"
 rayon = "1"
 steamworks = { version = "0.13", features = ["raw-bindings"] }
 lofty = "0.22"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
 
 [dev-dependencies]
 tempfile = "3"

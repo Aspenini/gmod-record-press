@@ -134,14 +134,16 @@ pub fn publish(
     let upload = upload_item(
         &client,
         id,
-        staging.content_dir.as_path(),
-        Path::new(icon_path),
-        &title,
-        &description,
-        &tags,
-        visibility,
-        created,
-        change_note.as_deref(),
+        UploadSpec {
+            content_dir: staging.content_dir.as_path(),
+            icon_path: Path::new(icon_path),
+            title: &title,
+            description: &description,
+            tags: &tags,
+            visibility,
+            is_create: created,
+            change_note: change_note.as_deref(),
+        },
         &mut progress,
     );
 
@@ -272,36 +274,40 @@ fn create_item(client: &Client) -> AppResult<PublishedFileId> {
     }
 }
 
+struct UploadSpec<'a> {
+    content_dir: &'a Path,
+    icon_path: &'a Path,
+    title: &'a str,
+    description: &'a str,
+    tags: &'a [String],
+    visibility: PublishedFileVisibility,
+    is_create: bool,
+    change_note: Option<&'a str>,
+}
+
 fn upload_item(
     client: &Client,
     id: PublishedFileId,
-    content_dir: &Path,
-    icon_path: &Path,
-    title: &str,
-    description: &str,
-    tags: &[String],
-    visibility: PublishedFileVisibility,
-    is_create: bool,
-    change_note: Option<&str>,
+    spec: UploadSpec<'_>,
     progress: &mut impl FnMut(WorkshopProgress),
 ) -> AppResult<bool> {
     let (tx, rx) = mpsc::channel();
     let mut update = client
         .ugc()
         .start_item_update(GMOD_APP_ID, id)
-        .content_path(content_dir)
-        .preview_path(icon_path)
-        .tags(tags.to_vec(), false)
-        .visibility(visibility);
+        .content_path(spec.content_dir)
+        .preview_path(spec.icon_path)
+        .tags(spec.tags.to_vec(), false)
+        .visibility(spec.visibility);
 
-    if is_create || !title.trim().is_empty() {
-        update = update.title(title);
+    if spec.is_create || !spec.title.trim().is_empty() {
+        update = update.title(spec.title);
     }
-    if is_create || !description.trim().is_empty() {
-        update = update.description(description);
+    if spec.is_create || !spec.description.trim().is_empty() {
+        update = update.description(spec.description);
     }
 
-    let watch = update.submit(change_note, move |result| {
+    let watch = update.submit(spec.change_note, move |result| {
         let _ = tx.send(result);
     });
 
@@ -316,18 +322,17 @@ fn upload_item(
                 UpdateStatus::CommittingChanges => "Committing Workshop changes.",
                 UpdateStatus::Invalid => unreachable!(),
             };
-            let percent = if total > 0 {
-                55 + ((processed.min(total) * 40) / total) as u8
-            } else {
-                match status {
+            let percent = (processed.min(total) * 40)
+                .checked_div(total)
+                .map(|value| 55 + value as u8)
+                .unwrap_or_else(|| match status {
                     UpdateStatus::PreparingConfig => 55,
                     UpdateStatus::PreparingContent => 62,
                     UpdateStatus::UploadingContent => 78,
                     UpdateStatus::UploadingPreviewFile => 88,
                     UpdateStatus::CommittingChanges => 94,
                     UpdateStatus::Invalid => 55,
-                }
-            };
+                });
             progress(stage("upload", detail, percent.min(99)));
         }
 

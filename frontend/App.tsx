@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import packageInfo from "../package.json";
 import { Dropzone } from "./components/Dropzone";
 import { MetadataPicker } from "./components/MetadataPicker";
@@ -68,7 +69,9 @@ export default function App() {
   const [writeGma, setWriteGma] = useState(false);
   const [writeIcon, setWriteIcon] = useState(true);
   const [workshopId, setWorkshopId] = useState("");
-  const [workshopDescription, setWorkshopDescription] = useState("");
+  const [workshopDescription, setWorkshopDescription] = useState(() =>
+    defaultWorkshopDescription("", ""),
+  );
   const [useDescriptionTemplate, setUseDescriptionTemplate] = useState(true);
   const [workshopVisibility, setWorkshopVisibility] = useState("private");
   const [changeNote, setChangeNote] = useState("");
@@ -93,6 +96,8 @@ export default function App() {
   const [leftView, setLeftView] = useState<LeftView>("album");
   const [rightView, setRightView] = useState<RightView>("export");
   const [metaPicker, setMetaPicker] = useState<AlbumMetaSuggestion | null>(null);
+  const [cleanSignature, setCleanSignature] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const metaRef = useRef({
     artist: "",
     album: "",
@@ -101,6 +106,7 @@ export default function App() {
     label: null as ImagePreview | null,
     tracks: [] as Track[],
   });
+  const saveProjectRef = useRef<() => Promise<void>>(async () => undefined);
   metaRef.current = { artist, album, cover, back, label, tracks };
   const dropHandlerRef = useRef<(paths: string[], target: DropTarget) => void>(() => {});
 
@@ -146,15 +152,55 @@ export default function App() {
         : workshopItems,
     [showOnlyRelevantWorkshopItems, workshopItems],
   );
+  const currentSignature = JSON.stringify(project);
+  const isDirty = cleanSignature !== null && cleanSignature !== currentSignature;
+  const dirtyRef = useRef(isDirty);
+  dirtyRef.current = isDirty;
 
   useEffect(() => {
-    api.suggestGmodAddonsDir().then((dir) => {
-      setGmodDir(dir);
-      const last = localStorage.getItem("rpam.destDir");
-      if (last) setDestDir(last);
-      else if (dir) setDestDir(dir);
-    });
-    refreshSteam();
+    if (cleanSignature === null) setCleanSignature(currentSignature);
+  }, [cleanSignature, currentSignature]);
+
+  useEffect(() => {
+    api
+      .suggestGmodAddonsDir()
+      .then((dir) => {
+        setGmodDir(dir);
+        const last = localStorage.getItem("rpam.destDir");
+        if (last) setDestDir(last);
+        else if (dir) setDestDir(dir);
+      })
+      .catch((err) => setError(errorMessage(err)));
+    void refreshSteam();
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow()
+      .onCloseRequested((event) => {
+        if (
+          dirtyRef.current &&
+          !window.confirm("You have unsaved changes. Close GMod Record Press anyway?")
+        ) {
+          event.preventDefault();
+        }
+      })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => undefined);
+    return () => unlisten?.();
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveProjectRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -171,10 +217,21 @@ export default function App() {
   }, [artist, album, useDescriptionTemplate]);
 
   useEffect(() => {
+    let cancelled = false;
     const handle = window.setTimeout(() => {
-      api.validate(project).then(setIssues).catch(() => setIssues([]));
+      api
+        .validate(project)
+        .then((nextIssues) => {
+          if (!cancelled) setIssues(nextIssues);
+        })
+        .catch(() => {
+          if (!cancelled) setIssues([]);
+        });
     }, 200);
-    return () => window.clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
   }, [project]);
 
   useEffect(() => {
@@ -187,13 +244,13 @@ export default function App() {
       if (!cancelled) setProgress(event.payload);
     }).then((fn) => {
       unlistenProgress = fn;
-    });
+    }).catch(() => undefined);
 
     listen<ExportProgress>("workshop-progress", (event) => {
       if (!cancelled) setProgress(event.payload);
     }).then((fn) => {
       unlistenWorkshop = fn;
-    });
+    }).catch(() => undefined);
 
     getCurrentWebview()
       .onDragDropEvent((event) => {
@@ -217,7 +274,8 @@ export default function App() {
       })
       .then((fn) => {
         unlistenDrop = fn;
-      });
+      })
+      .catch((err) => setError(errorMessage(err)));
 
     return () => {
       cancelled = true;
@@ -228,37 +286,52 @@ export default function App() {
   }, []);
 
   async function handleDroppedPaths(paths: string[], target: DropTarget) {
-    const images = paths.filter((p) =>
-      IMAGE_EXT.some((ext) => p.toLowerCase().endsWith(ext)),
-    );
-    const audio = paths.filter((p) =>
-      AUDIO_EXT.some((ext) => p.toLowerCase().endsWith(ext)),
-    );
+    setError(null);
+    try {
+      const images = paths.filter((p) =>
+        IMAGE_EXT.some((ext) => p.toLowerCase().endsWith(ext)),
+      );
+      const audio = paths.filter((p) =>
+        AUDIO_EXT.some((ext) => p.toLowerCase().endsWith(ext)),
+      );
 
-    if (audio.length) {
-      await ingestAudio(await api.audioInfo(audio));
+      if (audio.length) {
+        await ingestAudio(await api.audioInfo(audio));
+      }
+
+      if (!images.length) return;
+      const preview = await api.readImagePreview(images[0]);
+      if (target === "back") setBack(preview);
+      else if (target === "label") setLabel(preview);
+      else setCover(preview);
+    } catch (err) {
+      setError(errorMessage(err));
     }
-
-    if (!images.length) return;
-    const preview = await api.readImagePreview(images[0]);
-    if (target === "back") setBack(preview);
-    else if (target === "label") setLabel(preview);
-    else setCover(preview);
   }
   dropHandlerRef.current = handleDroppedPaths;
 
   async function pickArt(which: "cover" | "back" | "label") {
-    const picked = await api.pickImage();
-    if (!picked) return;
-    if (which === "cover") setCover(picked);
-    if (which === "back") setBack(picked);
-    if (which === "label") setLabel(picked);
+    setError(null);
+    try {
+      const picked = await api.pickImage();
+      if (!picked) return;
+      if (which === "cover") setCover(picked);
+      if (which === "back") setBack(picked);
+      if (which === "label") setLabel(picked);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
   }
 
   async function addTracks() {
-    const scan = await api.pickAudioFiles();
-    if (!scan.tracks.length) return;
-    await ingestAudio(scan);
+    setError(null);
+    try {
+      const scan = await api.pickAudioFiles();
+      if (!scan.tracks.length) return;
+      await ingestAudio(scan);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
   }
 
   async function ingestAudio(scan: AudioScan) {
@@ -320,10 +393,15 @@ export default function App() {
   }
 
   async function chooseDest() {
-    const dir = await api.pickExportDir();
-    if (dir) {
-      setDestDir(dir);
-      localStorage.setItem("rpam.destDir", dir);
+    setError(null);
+    try {
+      const dir = await api.pickExportDir();
+      if (dir) {
+        setDestDir(dir);
+        localStorage.setItem("rpam.destDir", dir);
+      }
+    } catch (err) {
+      setError(errorMessage(err));
     }
   }
 
@@ -362,7 +440,7 @@ export default function App() {
       });
       setResult(exported);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -387,24 +465,44 @@ export default function App() {
       setWorkshopResult(published);
       setResult(published.export);
       setWorkshopId(String(published.workshopId));
-      await openUrl(published.url);
+      const publishedProject = { ...project, workshopId: published.workshopId };
+      if (projectPath) {
+        try {
+          await api.saveProject(projectPath, publishedProject);
+          setCleanSignature(JSON.stringify(publishedProject));
+          setNotice("Published and saved");
+        } catch (saveErr) {
+          setError(`Published successfully, but the project could not be saved: ${errorMessage(saveErr)}`);
+        }
+      } else {
+        setNotice("Published — save the project to keep its Workshop link");
+      }
+      void openUrl(published.url).catch(() => undefined);
       if (published.needsLegalAgreement) {
-        await openUrl(published.legalAgreementUrl);
+        void openUrl(published.legalAgreementUrl).catch(() => undefined);
       }
       void refreshSteam();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
   }
 
   async function saveProject() {
-    const path = projectPath ?? (await api.pickSaveProject());
-    if (!path) return;
-    await api.saveProject(path, project);
-    setProjectPath(path);
+    setError(null);
+    try {
+      const path = projectPath ?? (await api.pickSaveProject());
+      if (!path) return;
+      await api.saveProject(path, project);
+      setProjectPath(path);
+      setCleanSignature(currentSignature);
+      setNotice("Saved");
+    } catch (err) {
+      setError(errorMessage(err));
+    }
   }
+  saveProjectRef.current = saveProject;
 
   async function showOpenPanel() {
     setOpenPanel(true);
@@ -424,6 +522,18 @@ export default function App() {
   }
 
   async function applyLoadedProject(loaded: AlbumProject, jsonPath: string | null) {
+    if (!confirmDiscardChanges()) return false;
+    const useTemplate = loaded.workshopUseTemplate !== false;
+    const loadedDescription = useTemplate
+      ? defaultWorkshopDescription(loaded.artist, loaded.album)
+      : loaded.workshopDescription ?? "";
+    const normalizedProject: AlbumProject = {
+      ...loaded,
+      addonTitle: defaultAddonTitle(loaded.artist, loaded.album),
+      workshopDescription: loadedDescription,
+      workshopVisibility: loaded.workshopVisibility || "private",
+      workshopUseTemplate: useTemplate,
+    };
     setArtist(loaded.artist);
     setAlbum(loaded.album);
     setVinylId(loaded.vinylId);
@@ -466,30 +576,29 @@ export default function App() {
     setResult(null);
     setWorkshopResult(null);
     setWorkshopId(loaded.workshopId ? String(loaded.workshopId) : "");
-    const useTemplate = loaded.workshopUseTemplate !== false;
     setUseDescriptionTemplate(useTemplate);
-    setWorkshopDescription(
-      useTemplate
-        ? defaultWorkshopDescription(loaded.artist, loaded.album)
-        : loaded.workshopDescription ?? "",
-    );
+    setWorkshopDescription(loadedDescription);
     setWorkshopVisibility(loaded.workshopVisibility || "private");
     setChangeNote("");
     setOpenPanel(false);
     setOpenError(null);
     setMetaPicker(null);
+    setCleanSignature(JSON.stringify(normalizedProject));
+    setNotice(jsonPath ? "Project opened" : "Addon imported");
+    return true;
   }
 
   async function openVinylAddon(path: string) {
     setOpenError(null);
     try {
       const loaded = await api.importVinylAddon(path);
-      const parent = path.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
-      if (parent) {
-        setDestDir(parent);
-        localStorage.setItem("rpam.destDir", parent);
+      if (await applyLoadedProject(loaded, null)) {
+        const parent = path.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
+        if (parent) {
+          setDestDir(parent);
+          localStorage.setItem("rpam.destDir", parent);
+        }
       }
-      await applyLoadedProject(loaded, null);
     } catch (err) {
       setOpenError(err instanceof Error ? err.message : String(err));
     }
@@ -501,12 +610,13 @@ export default function App() {
     setOpenError(null);
     try {
       const loaded = await api.importVinylAddon(dir);
-      const parent = dir.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
-      if (parent) {
-        setDestDir(parent);
-        localStorage.setItem("rpam.destDir", parent);
+      if (await applyLoadedProject(loaded, null)) {
+        const parent = dir.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
+        if (parent) {
+          setDestDir(parent);
+          localStorage.setItem("rpam.destDir", parent);
+        }
       }
-      await applyLoadedProject(loaded, null);
       return;
     } catch {
       // Not a single addon — maybe a folder of albums.
@@ -538,6 +648,7 @@ export default function App() {
   }
 
   function reset() {
+    if (!confirmDiscardChanges()) return;
     setArtist("");
     setAlbum("");
     setVinylId("");
@@ -559,6 +670,15 @@ export default function App() {
     setWorkshopVisibility("private");
     setChangeNote("");
     setMetaPicker(null);
+    setCleanSignature(null);
+    setNotice("New project");
+  }
+
+  function confirmDiscardChanges() {
+    return (
+      !isDirty ||
+      window.confirm("You have unsaved changes. Discard them and continue?")
+    );
   }
 
   const errors = issues.filter((i) => i.level === "error");
@@ -593,7 +713,10 @@ export default function App() {
             </h1>
           </div>
         </div>
-        <div className="flex gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs">
+          <span className={isDirty ? "mr-1 text-gold" : "mr-1 text-muted"}>
+            {isDirty ? "Unsaved changes" : notice}
+          </span>
           <GhostButton onClick={reset}>New</GhostButton>
           <GhostButton onClick={() => void showOpenPanel()}>Open</GhostButton>
           <GhostButton onClick={() => void saveProject()}>Save</GhostButton>
@@ -616,6 +739,8 @@ export default function App() {
             <div
               className="view-pane flex flex-col gap-4 pr-1"
               data-active={leftView === "album" ? "true" : "false"}
+              aria-hidden={leftView !== "album"}
+              inert={leftView !== "album"}
             >
               <section className="rounded-xl border border-line bg-panel p-4">
                 <h2 className="font-display text-xl text-cream">Album</h2>
@@ -724,6 +849,8 @@ export default function App() {
             <div
               className="view-pane rounded-xl border border-line bg-panel"
               data-active={leftView === "preview" ? "true" : "false"}
+              aria-hidden={leftView !== "preview"}
+              inert={leftView !== "preview"}
             >
               <Preview
                 album={album}
@@ -752,7 +879,14 @@ export default function App() {
             />
           </div>
           {busy && progress && (
-            <div className="mb-3 h-1 overflow-hidden rounded bg-line">
+            <div
+              role="progressbar"
+              aria-label={progress.detail}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress.percent}
+              className="mb-3 h-1 overflow-hidden rounded bg-line"
+            >
               <div
                 className="h-full bg-gold"
                 style={{ width: `${progress.percent}%` }}
@@ -760,7 +894,12 @@ export default function App() {
             </div>
           )}
           <div className="view-stack">
-            <div className="view-pane" data-active={rightView === "export" ? "true" : "false"}>
+            <div
+              className="view-pane"
+              data-active={rightView === "export" ? "true" : "false"}
+              aria-hidden={rightView !== "export"}
+              inert={rightView !== "export"}
+            >
               <section className="h-full overflow-auto rounded-xl border border-line bg-panel p-4">
             <h2 className="font-display text-xl text-cream">Export</h2>
             <p className="mt-1 text-xs text-muted">
@@ -822,7 +961,7 @@ export default function App() {
             >
               {busy ? progress?.detail ?? "Exporting…" : "Export album addon"}
             </button>
-            {error && <p className="mt-3 text-sm text-label">{error}</p>}
+            {error && <p role="alert" className="mt-3 text-sm text-label">{error}</p>}
             {result && (
               <div className="mt-3 rounded-lg bg-ink p-3 text-xs text-muted">
                 <div className="text-cream">Wrote {result.filesWritten} files</div>
@@ -850,7 +989,12 @@ export default function App() {
               </section>
             </div>
 
-            <div className="view-pane" data-active={rightView === "workshop" ? "true" : "false"}>
+            <div
+              className="view-pane"
+              data-active={rightView === "workshop" ? "true" : "false"}
+              aria-hidden={rightView !== "workshop"}
+              inert={rightView !== "workshop"}
+            >
               <section className="h-full overflow-auto rounded-xl border border-line bg-panel p-4">
             <h2 className="font-display text-xl text-cream">Workshop</h2>
             <p className="mt-1 text-xs text-muted">
@@ -997,7 +1141,7 @@ export default function App() {
                   ? "Update Workshop item"
                   : "Publish to Workshop"}
             </button>
-            {error && <p className="mt-3 text-sm text-label">{error}</p>}
+            {error && <p role="alert" className="mt-3 text-sm text-label">{error}</p>}
             {workshopResult && (
               <div className="mt-3 rounded-lg bg-ink p-3 text-xs text-muted">
                 <div className="text-cream">
@@ -1124,4 +1268,8 @@ function targetFromPoint(x: number, y: number): DropTarget {
     return value;
   }
   return "tracks";
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }

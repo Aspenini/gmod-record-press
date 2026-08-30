@@ -43,12 +43,17 @@ export function OpenPanel({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="open-vinyl-title"
         className="flex max-h-[min(720px,90vh)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-line px-5 py-4">
           <div>
-            <h2 className="font-display text-2xl text-cream">Open vinyl</h2>
+            <h2 id="open-vinyl-title" className="font-display text-2xl text-cream">
+              Open vinyl
+            </h2>
             <p className="mt-1 text-xs text-muted">
               {scannedDir
                 ? `Record player albums in ${scannedDir}`
@@ -67,7 +72,7 @@ export function OpenPanel({
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto p-5">
-          {error && <p className="mb-3 text-sm text-label">{error}</p>}
+          {error && <p role="alert" className="mb-3 text-sm text-label">{error}</p>}
           {loading ? (
             <p className="py-12 text-center text-sm text-muted">Looking for albums…</p>
           ) : addons.length ? (

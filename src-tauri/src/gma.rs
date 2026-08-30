@@ -29,7 +29,7 @@ pub fn write_gma(out_path: &Path, title: &str, files: &[GmaFile]) -> AppResult<(
     })
     .to_string();
     write_cstring(&mut w, &description)?;
-    write_cstring(&mut w, "Author Name")?;
+    write_cstring(&mut w, "GMod Record Press")?;
     w.write_all(&1i32.to_le_bytes())?;
 
     for (index, entry) in files.iter().enumerate() {
