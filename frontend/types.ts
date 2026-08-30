@@ -36,6 +36,9 @@ export type AlbumProject = {
   vinylColor: string;
   vinylResolution: number;
   tracks: { name: string; path: string }[];
+  workshopId: number | null;
+  workshopDescription: string;
+  workshopVisibility: "private" | "friends" | "public" | string;
 };
 
 export type ExportOptions = {
@@ -55,6 +58,34 @@ export type ExportResult = {
   gmaPath: string | null;
   workshopIconPath: string | null;
   filesWritten: number;
+};
+
+export type WorkshopStatus = {
+  connected: boolean;
+  persona: string | null;
+  error: string | null;
+};
+
+export type WorkshopItem = {
+  id: number;
+  title: string;
+};
+
+export type WorkshopPublishOptions = {
+  destDir: string;
+  workshopId: number | null;
+  description: string;
+  visibility: string;
+  changeNote: string;
+};
+
+export type WorkshopPublishResult = {
+  workshopId: number;
+  url: string;
+  updated: boolean;
+  needsLegalAgreement: boolean;
+  legalAgreementUrl: string;
+  export: ExportResult;
 };
 
 export const VINYL_COLORS = [

@@ -216,6 +216,9 @@ mod tests {
                 name: "First Song".into(),
                 path: audio.to_string_lossy().to_string(),
             }],
+            workshop_id: None,
+            workshop_description: String::new(),
+            workshop_visibility: "private".into(),
         };
         let dest = dir.path().join("out");
         let result = export_album(

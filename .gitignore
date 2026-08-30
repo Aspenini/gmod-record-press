@@ -14,6 +14,10 @@ dist-ssr
 *.local
 src-tauri/target
 src-tauri/gen
+src-tauri/steam_api64.dll
+src-tauri/steam_api.dll
+src-tauri/libsteam_api.so
+src-tauri/libsteam_api.dylib
 
 # Editor directories and files
 .vscode/*

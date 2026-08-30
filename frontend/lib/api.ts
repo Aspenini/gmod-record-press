@@ -6,6 +6,10 @@ import type {
   ExportResult,
   ImagePreview,
   Issue,
+  WorkshopItem,
+  WorkshopPublishOptions,
+  WorkshopPublishResult,
+  WorkshopStatus,
 } from "../types";
 
 export const api = {
@@ -26,4 +30,10 @@ export const api = {
   openPath: (path: string) => invoke<void>("open_path", { path }),
   exportAddon: (project: AlbumProject, options: ExportOptions) =>
     invoke<ExportResult>("export_addon", { project, options }),
+  steamStatus: () => invoke<WorkshopStatus>("steam_status"),
+  listWorkshopItems: () => invoke<WorkshopItem[]>("list_workshop_items"),
+  workshopDescription: (project: AlbumProject) =>
+    invoke<string>("workshop_description", { project }),
+  publishWorkshop: (project: AlbumProject, options: WorkshopPublishOptions) =>
+    invoke<WorkshopPublishResult>("publish_workshop", { project, options }),
 };

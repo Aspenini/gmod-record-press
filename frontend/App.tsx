@@ -4,8 +4,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Dropzone } from "./components/Dropzone";
 import { Preview } from "./components/Preview";
 import { TrackList } from "./components/TrackList";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "./lib/api";
-import { defaultAddonTitle, slugify } from "./lib/slug";
+import { defaultAddonTitle, parseWorkshopId, slugify } from "./lib/slug";
 import type {
   AlbumProject,
   AudioInfo,
@@ -14,6 +15,9 @@ import type {
   ImagePreview,
   Issue,
   Track,
+  WorkshopItem,
+  WorkshopPublishResult,
+  WorkshopStatus,
 } from "./types";
 import { VINYL_COLORS } from "./types";
 
@@ -49,10 +53,20 @@ export default function App() {
   const [gmodDir, setGmodDir] = useState<string | null>(null);
   const [writeGma, setWriteGma] = useState(false);
   const [writeIcon, setWriteIcon] = useState(true);
+  const [workshopId, setWorkshopId] = useState("");
+  const [workshopDescription, setWorkshopDescription] = useState("");
+  const [descriptionTouched, setDescriptionTouched] = useState(false);
+  const [workshopVisibility, setWorkshopVisibility] = useState("private");
+  const [changeNote, setChangeNote] = useState("");
+  const [steam, setSteam] = useState<WorkshopStatus | null>(null);
+  const [workshopItems, setWorkshopItems] = useState<WorkshopItem[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [result, setResult] = useState<ExportResult | null>(null);
+  const [workshopResult, setWorkshopResult] = useState<WorkshopPublishResult | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const [projectPath, setProjectPath] = useState<string | null>(null);
@@ -69,6 +83,9 @@ export default function App() {
       vinylColor,
       vinylResolution,
       tracks: tracks.map(({ name, path }) => ({ name, path })),
+      workshopId: parseWorkshopId(workshopId),
+      workshopDescription,
+      workshopVisibility,
     }),
     [
       artist,
@@ -81,6 +98,9 @@ export default function App() {
       vinylColor,
       vinylResolution,
       tracks,
+      workshopId,
+      workshopDescription,
+      workshopVisibility,
     ],
   );
 
@@ -91,6 +111,7 @@ export default function App() {
       if (last) setDestDir(last);
       else if (dir) setDestDir(dir);
     });
+    refreshSteam();
   }, []);
 
   useEffect(() => {
@@ -100,6 +121,12 @@ export default function App() {
   useEffect(() => {
     if (!titleTouched) setAddonTitle(defaultAddonTitle(artist, album));
   }, [artist, album, titleTouched]);
+
+  useEffect(() => {
+    if (descriptionTouched) return;
+    const names = tracks.map((t) => t.name);
+    setWorkshopDescription(defaultWorkshopDescription(artist, album, names));
+  }, [artist, album, tracks, descriptionTouched]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -112,11 +139,18 @@ export default function App() {
     let cancelled = false;
     let unlistenDrop: (() => void) | undefined;
     let unlistenProgress: (() => void) | undefined;
+    let unlistenWorkshop: (() => void) | undefined;
 
     listen<ExportProgress>("export-progress", (event) => {
       if (!cancelled) setProgress(event.payload);
     }).then((fn) => {
       unlistenProgress = fn;
+    });
+
+    listen<ExportProgress>("workshop-progress", (event) => {
+      if (!cancelled) setProgress(event.payload);
+    }).then((fn) => {
+      unlistenWorkshop = fn;
     });
 
     getCurrentWebview()
@@ -147,6 +181,7 @@ export default function App() {
       cancelled = true;
       unlistenDrop?.();
       unlistenProgress?.();
+      unlistenWorkshop?.();
     };
   }, []);
 
@@ -208,9 +243,30 @@ export default function App() {
     }
   }
 
+  async function refreshSteam() {
+    try {
+      const status = await api.steamStatus();
+      setSteam(status);
+      if (status.connected) {
+        const items = await api.listWorkshopItems().catch(() => []);
+        setWorkshopItems(items);
+      } else {
+        setWorkshopItems([]);
+      }
+    } catch (err) {
+      setSteam({
+        connected: false,
+        persona: null,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      setWorkshopItems([]);
+    }
+  }
+
   async function exportAlbum() {
     setError(null);
     setResult(null);
+    setWorkshopResult(null);
     setBusy(true);
     setProgress({ stage: "start", detail: "Starting export…", percent: 1 });
     try {
@@ -221,6 +277,36 @@ export default function App() {
         writeWorkshopIcon: writeIcon,
       });
       setResult(exported);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function publishToWorkshop() {
+    setError(null);
+    setResult(null);
+    setWorkshopResult(null);
+    setBusy(true);
+    setProgress({ stage: "start", detail: "Connecting to Steam…", percent: 1 });
+    try {
+      if (destDir) localStorage.setItem("rpam.destDir", destDir);
+      const published = await api.publishWorkshop(project, {
+        destDir,
+        workshopId: parseWorkshopId(workshopId),
+        description: workshopDescription,
+        visibility: workshopVisibility,
+        changeNote,
+      });
+      setWorkshopResult(published);
+      setResult(published.export);
+      setWorkshopId(String(published.workshopId));
+      await openUrl(published.url);
+      if (published.needsLegalAgreement) {
+        await openUrl(published.legalAgreementUrl);
+      }
+      void refreshSteam();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -266,6 +352,12 @@ export default function App() {
     );
     setProjectPath(path);
     setResult(null);
+    setWorkshopResult(null);
+    setWorkshopId(loaded.workshopId ? String(loaded.workshopId) : "");
+    setWorkshopDescription(loaded.workshopDescription ?? "");
+    setDescriptionTouched(Boolean(loaded.workshopDescription));
+    setWorkshopVisibility(loaded.workshopVisibility || "private");
+    setChangeNote("");
   }
 
   function reset() {
@@ -282,13 +374,21 @@ export default function App() {
     setVinylResolution(2048);
     setTracks([]);
     setResult(null);
+    setWorkshopResult(null);
     setError(null);
     setProjectPath(null);
+    setWorkshopId("");
+    setWorkshopDescription("");
+    setDescriptionTouched(false);
+    setWorkshopVisibility("private");
+    setChangeNote("");
   }
 
   const errors = issues.filter((i) => i.level === "error");
   const warnings = issues.filter((i) => i.level !== "error");
   const canExport = errors.length === 0 && Boolean(destDir) && !busy;
+  const linkedWorkshopId = parseWorkshopId(workshopId);
+  const canPublish = errors.length === 0 && !busy;
 
   return (
     <div className="flex h-full flex-col">
@@ -514,6 +614,157 @@ export default function App() {
               ))}
             </ul>
           </section>
+
+          <section className="rounded-xl border border-line bg-panel p-4">
+            <h2 className="font-display text-xl text-cream">Workshop</h2>
+            <p className="mt-1 text-xs text-muted">
+              Publishes through Steamworks, same path as gmpublisher. Steam must be
+              running and you must own Garry's Mod. New items start private.
+            </p>
+            <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+              <span className={steam?.connected ? "text-gold" : "text-muted"}>
+                {steam?.connected
+                  ? `Connected as ${steam.persona ?? "Steam"}`
+                  : steam?.error
+                    ? "Steam is not connected"
+                    : "Checking Steam…"}
+              </span>
+              <GhostButton onClick={() => void refreshSteam()}>Retry</GhostButton>
+            </div>
+            {steam && !steam.connected && steam.error && (
+              <p className="mt-2 text-xs text-label">{steam.error}</p>
+            )}
+
+            <label className="mt-3 block">
+              <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
+                Visibility
+              </span>
+              <select
+                value={workshopVisibility}
+                onChange={(e) => setWorkshopVisibility(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-cream outline-none"
+              >
+                <option value="private">Private</option>
+                <option value="friends">Friends only</option>
+                <option value="public">Public</option>
+              </select>
+            </label>
+
+            <label className="mt-3 block">
+              <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
+                Description
+              </span>
+              <textarea
+                value={workshopDescription}
+                onChange={(e) => {
+                  setDescriptionTouched(true);
+                  setWorkshopDescription(e.target.value);
+                }}
+                rows={6}
+                className="mt-1 w-full resize-y rounded-lg border border-line bg-ink px-3 py-2 text-sm text-cream outline-none focus:border-gold"
+              />
+            </label>
+
+            <label className="mt-3 block">
+              <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
+                Workshop ID
+              </span>
+              <input
+                value={workshopId}
+                onChange={(e) => setWorkshopId(e.target.value.replace(/[^\d]/g, ""))}
+                className="mt-1 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-cream outline-none focus:border-gold"
+                placeholder="Leave empty to create a new item"
+              />
+            </label>
+            {workshopItems.length > 0 && (
+              <label className="mt-2 block">
+                <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
+                  Your addons
+                </span>
+                <select
+                  value={workshopId}
+                  onChange={(e) => setWorkshopId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-cream outline-none"
+                >
+                  <option value="">Create a new Workshop item</option>
+                  {workshopItems.map((item) => (
+                    <option key={item.id} value={String(item.id)}>
+                      {item.title} ({item.id})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {linkedWorkshopId && (
+              <button
+                type="button"
+                className="mt-2 text-xs text-gold"
+                onClick={() => setWorkshopId("")}
+              >
+                Unlink and create a new item
+              </button>
+            )}
+
+            {linkedWorkshopId ? (
+              <label className="mt-3 block">
+                <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
+                  Change notes
+                </span>
+                <input
+                  value={changeNote}
+                  onChange={(e) => setChangeNote(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-cream outline-none focus:border-gold"
+                  placeholder="Optional changelog"
+                />
+              </label>
+            ) : null}
+
+            <button
+              type="button"
+              disabled={!canPublish}
+              onClick={() => void publishToWorkshop()}
+              className="mt-4 w-full rounded-full border border-gold bg-transparent py-3 font-display text-lg text-gold disabled:opacity-40"
+            >
+              {busy
+                ? progress?.detail ?? "Publishing…"
+                : linkedWorkshopId
+                  ? "Update Workshop item"
+                  : "Publish to Workshop"}
+            </button>
+            {busy && progress && (
+              <div className="mt-2 h-1 overflow-hidden rounded bg-line">
+                <div
+                  className="h-full bg-gold"
+                  style={{ width: `${progress.percent}%` }}
+                />
+              </div>
+            )}
+            {error && <p className="mt-3 text-sm text-label">{error}</p>}
+            {workshopResult && (
+              <div className="mt-3 rounded-lg bg-ink p-3 text-xs text-muted">
+                <div className="text-cream">
+                  {workshopResult.updated ? "Updated" : "Published"} item{" "}
+                  {workshopResult.workshopId}
+                </div>
+                <button
+                  type="button"
+                  className="mt-1 text-gold"
+                  onClick={() => void openUrl(workshopResult.url)}
+                >
+                  Open Workshop page
+                </button>
+                {workshopResult.needsLegalAgreement && (
+                  <button
+                    type="button"
+                    className="mt-1 block text-gold"
+                    onClick={() => void openUrl(workshopResult.legalAgreementUrl)}
+                  >
+                    Accept Steam Workshop legal agreement
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
         </aside>
       </main>
     </div>
@@ -560,6 +811,28 @@ function GhostButton({
       {children}
     </button>
   );
+}
+
+function defaultWorkshopDescription(
+  artist: string,
+  album: string,
+  tracks: string[],
+): string {
+  const who = artist.trim();
+  const title = album.trim();
+  const heading =
+    who && title ? `${who} — ${title}` : who || title || "Untitled vinyl";
+  const list = tracks
+    .map((name, index) => `${index + 1}. ${name.trim() || "Untitled track"}`)
+    .join("\n");
+  return `${heading}
+
+A vinyl for the Working Record Player.
+
+Tracks:
+${list || "(none yet)"}
+
+Requires Working Record Player.`;
 }
 
 function targetFromPoint(x: number, y: number): DropTarget {

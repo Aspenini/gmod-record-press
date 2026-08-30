@@ -20,3 +20,16 @@ export function formatBytes(size: number): string {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+export function parseWorkshopId(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return null;
+  try {
+    const id = BigInt(trimmed);
+    if (id <= 0n || id > 18446744073709551615n) return null;
+    return Number(id);
+  } catch {
+    return null;
+  }
+}

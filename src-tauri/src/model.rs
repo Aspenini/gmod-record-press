@@ -24,6 +24,12 @@ pub struct AlbumProject {
     pub vinyl_resolution: u32,
     #[serde(default)]
     pub tracks: Vec<Track>,
+    #[serde(default)]
+    pub workshop_id: Option<u64>,
+    #[serde(default)]
+    pub workshop_description: String,
+    #[serde(default = "default_workshop_visibility")]
+    pub workshop_visibility: String,
 }
 
 fn default_vinyl_color() -> String {
@@ -32,6 +38,10 @@ fn default_vinyl_color() -> String {
 
 fn default_vinyl_resolution() -> u32 {
     2048
+}
+
+fn default_workshop_visibility() -> String {
+    "private".to_string()
 }
 
 impl AlbumProject {
@@ -85,6 +95,55 @@ pub struct ExportResult {
     pub gma_path: Option<String>,
     pub workshop_icon_path: Option<String>,
     pub files_written: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkshopStatus {
+    pub connected: bool,
+    pub persona: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkshopItem {
+    pub id: u64,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkshopPublishOptions {
+    #[serde(default)]
+    pub dest_dir: String,
+    #[serde(default)]
+    pub workshop_id: Option<u64>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_workshop_visibility")]
+    pub visibility: String,
+    #[serde(default)]
+    pub change_note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkshopProgress {
+    pub stage: String,
+    pub detail: String,
+    pub percent: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkshopPublishResult {
+    pub workshop_id: u64,
+    pub url: String,
+    pub updated: bool,
+    pub needs_legal_agreement: bool,
+    pub legal_agreement_url: String,
+    pub export: ExportResult,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

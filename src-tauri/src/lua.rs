@@ -118,6 +118,9 @@ mod tests {
                 name: "War Pigs / Luke's Wall".into(),
                 path: "x.mp3".into(),
             }],
+            workshop_id: None,
+            workshop_description: String::new(),
+            workshop_visibility: "private".into(),
         };
         let lua = render_autorun(
             &project,

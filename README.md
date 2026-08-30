@@ -19,7 +19,7 @@ recordplayer_<id>/
 
 Optional extras next to that folder:
 
-- `.gma` for [gmpublisher](https://github.com/WilliamVenner/gmpublisher)
+- `.gma` for local packing or a manual Workshop upload
 - `512×512` workshop JPEG
 
 ## Develop
@@ -44,7 +44,16 @@ bun run tauri build
 3. Start the game, run `spawnmenu_reload` if the album is missing.
 4. Spawn the record player and the album from the entities tab.
 
-This tool does not upload to the Steam Workshop. Use gmpublisher on the exported folder or `.gma`.
+## Publish to the Steam Workshop
+
+The app talks to Steamworks directly (same path as gmpublisher). It does not shell out to `gmpublish.exe`.
+
+1. Start Steam and log into an account that owns Garry's Mod.
+2. Fill in the album, then use **Publish to Workshop**.
+3. New items are created as **private**. Set visibility in the app or on the Workshop page.
+4. Later publishes with the saved Workshop ID update that item instead of creating a duplicate.
+
+Steam must be running. If Steam asks you to accept the Workshop legal agreement, do that before the item can go public.
 
 ## Tests
 

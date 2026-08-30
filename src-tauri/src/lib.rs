@@ -7,11 +7,13 @@ mod slug;
 mod steam;
 mod vinyl_art;
 mod vtf_encode;
+mod workshop;
 
 use crate::error::AppResult;
 use crate::model::{
     validate_project, AlbumProject, AudioInfo, ExportOptions, ExportProgress, ExportResult,
-    ImagePreview, Issue,
+    ImagePreview, Issue, WorkshopItem, WorkshopPublishOptions, WorkshopPublishResult,
+    WorkshopProgress, WorkshopStatus,
 };
 use crate::slug::title_from_filename;
 use crate::vtf_encode::{load_image, preview_data_url};
@@ -217,6 +219,37 @@ async fn export_addon(
     .map_err(Into::into)
 }
 
+#[tauri::command]
+fn steam_status() -> WorkshopStatus {
+    workshop::status()
+}
+
+#[tauri::command]
+fn list_workshop_items() -> Result<Vec<WorkshopItem>, String> {
+    workshop::list_my_items().map_err(Into::into)
+}
+
+#[tauri::command]
+fn workshop_description(project: AlbumProject) -> String {
+    workshop::default_description(&project)
+}
+
+#[tauri::command]
+async fn publish_workshop(
+    app: tauri::AppHandle,
+    project: AlbumProject,
+    options: WorkshopPublishOptions,
+) -> Result<WorkshopPublishResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        workshop::publish(&project, &options.dest_dir, &options, |progress: WorkshopProgress| {
+            let _ = app.emit("workshop-progress", progress);
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(Into::into)
+}
+
 fn read_preview(path: &Path) -> AppResult<ImagePreview> {
     let img = load_image(path)?;
     let (width, height) = image::GenericImageView::dimensions(&img);
@@ -247,7 +280,11 @@ pub fn run() {
             save_project,
             load_project,
             open_path,
-            export_addon
+            export_addon,
+            steam_status,
+            list_workshop_items,
+            workshop_description,
+            publish_workshop
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
