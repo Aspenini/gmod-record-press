@@ -1,6 +1,6 @@
 [package]
 name = "gmod-record-press"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desktop app for creating Working Record Player album addons for Garry's Mod"
 authors = ["you"]
 edition = "2021"
