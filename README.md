@@ -1,4 +1,21 @@
-# GMod Record Press
+<table width="100%">
+  <tr>
+    <td align="left" width="120">
+      <img src="src-tauri/icons/icon.png" alt="GMod Record Press" width="100" />
+    </td>
+    <td align="right">
+      <h1>GMod Record Press</h1>
+      <p>
+        <a href="https://github.com/Aspenini/gmod-record-press/releases">
+          <img alt="GitHub release" src="https://img.shields.io/github/v/release/Aspenini/gmod-record-press?label=release" />
+        </a>
+        <a href="https://aur.archlinux.org/packages/gmod-record-press">
+          <img alt="AUR version" src="https://img.shields.io/aur/version/gmod-record-press?label=AUR&amp;logo=archlinux&amp;cacheSeconds=3600" />
+        </a>
+      </p>
+    </td>
+  </tr>
+</table>
 
 A desktop app for creating **Working Record Player** album addons for Garry's Mod.
 
