@@ -25,7 +25,7 @@ import type {
   WorkshopPublishResult,
   WorkshopStatus,
 } from "./types";
-import { VINYL_COLORS } from "./types";
+import { RECORD_PLAYER_WORKSHOP_URL, VINYL_COLORS } from "./types";
 
 const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tga"];
 const AUDIO_EXT = [".mp3", ".ogg", ".wav"];
@@ -831,7 +831,16 @@ export default function App() {
             <h2 className="font-display text-xl text-cream">Workshop</h2>
             <p className="mt-1 text-xs text-muted">
               Publishes through Steamworks, same path as gmpublisher. Steam must be
-              running and you must own Garry's Mod. New items start private.
+              running and you must own Garry's Mod. New items start private. Subscribers
+              are required to have{" "}
+              <button
+                type="button"
+                className="text-gold"
+                onClick={() => void openUrl(RECORD_PLAYER_WORKSHOP_URL)}
+              >
+                Working Record Player
+              </button>
+              .
             </p>
             <div className="mt-3 flex items-center justify-between gap-2 text-xs">
               <span className={steam?.connected ? "text-gold" : "text-muted"}>
@@ -975,6 +984,23 @@ export default function App() {
                   >
                     Accept Steam Workshop legal agreement
                   </button>
+                )}
+                {workshopResult.dependencyError ? (
+                  <p className="mt-2 text-label">
+                    Uploaded, but Steam did not attach Working Record Player as a
+                    required item. Add it on the Workshop page under Required items.
+                  </p>
+                ) : (
+                  <div className="mt-2 text-muted">
+                    Requires{" "}
+                    <button
+                      type="button"
+                      className="text-gold"
+                      onClick={() => void openUrl(RECORD_PLAYER_WORKSHOP_URL)}
+                    >
+                      Working Record Player
+                    </button>
+                  </div>
                 )}
               </div>
             )}

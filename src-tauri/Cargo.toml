@@ -27,7 +27,7 @@ crc32fast = "1"
 base64 = "0.22"
 walkdir = "2"
 rayon = "1"
-steamworks = "0.13"
+steamworks = { version = "0.13", features = ["raw-bindings"] }
 lofty = "0.22"
 
 [dev-dependencies]

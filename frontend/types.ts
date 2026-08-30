@@ -130,7 +130,11 @@ export type WorkshopPublishResult = {
   needsLegalAgreement: boolean;
   legalAgreementUrl: string;
   export: ExportResult;
+  dependencyError?: string | null;
 };
+
+export const RECORD_PLAYER_WORKSHOP_URL =
+  "https://steamcommunity.com/sharedfiles/filedetails/?id=3777821069";
 
 export const VINYL_COLORS = [
   { name: "Black", value: "#141414" },

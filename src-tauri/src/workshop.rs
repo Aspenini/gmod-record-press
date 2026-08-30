@@ -9,11 +9,12 @@ use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use steamworks::{
-    AppId, AppIDs, Client, FileType, PublishedFileId, PublishedFileVisibility, SteamError, UGCType,
-    UpdateStatus, UserList, UserListOrder,
+    sys, AppId, AppIDs, Client, FileType, PublishedFileId, PublishedFileVisibility, SteamError,
+    UGCType, UpdateStatus, UserList, UserListOrder,
 };
 
 pub const GMOD_APP_ID: AppId = AppId(4000);
+pub const RECORD_PLAYER_WORKSHOP_ID: u64 = 3777821069;
 const LEGAL_AGREEMENT_URL: &str = "https://steamcommunity.com/workshop/workshoplegalagreement";
 const TITLE_MAX: usize = 128;
 const DESCRIPTION_MAX: usize = 8000;
@@ -147,14 +148,25 @@ pub fn publish(
     let _ = std::fs::remove_dir_all(&staging.root);
 
     match upload {
-        Ok(needs_legal_agreement) => Ok(WorkshopPublishResult {
-            workshop_id: id.0,
-            url: workshop_url(id.0),
-            updated: is_update,
-            needs_legal_agreement,
-            legal_agreement_url: LEGAL_AGREEMENT_URL.to_string(),
-            export: exported,
-        }),
+        Ok(needs_legal_agreement) => {
+            progress(stage(
+                "steam",
+                "Requiring Working Record Player on the Workshop.",
+                96,
+            ));
+            let dependency_error = add_record_player_dependency(id)
+                .err()
+                .map(|err| err.to_string());
+            Ok(WorkshopPublishResult {
+                workshop_id: id.0,
+                url: workshop_url(id.0),
+                updated: is_update,
+                needs_legal_agreement,
+                legal_agreement_url: LEGAL_AGREEMENT_URL.to_string(),
+                export: exported,
+                dependency_error,
+            })
+        }
         Err(err) => {
             if created {
                 client.ugc().delete_item(id, |_| {});
@@ -370,6 +382,71 @@ fn workshop_tags() -> Vec<String> {
     ]
 }
 
+fn add_record_player_dependency(parent: PublishedFileId) -> AppResult<()> {
+    let child = PublishedFileId(RECORD_PLAYER_WORKSHOP_ID);
+    unsafe {
+        let ugc = sys::SteamAPI_SteamUGC_v021();
+        let utils = sys::SteamAPI_SteamUtils_v010();
+        if ugc.is_null() || utils.is_null() {
+            return Err(AppError::Message(
+                "Steam UGC is not available to set the Working Record Player requirement.".into(),
+            ));
+        }
+
+        let api_call = sys::SteamAPI_ISteamUGC_AddDependency(ugc, parent.0, child.0);
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let mut failed = false;
+            if sys::SteamAPI_ISteamUtils_IsAPICallCompleted(utils, api_call, &mut failed) {
+                let mut result = std::mem::MaybeUninit::<sys::AddUGCDependencyResult_t>::zeroed();
+                let mut read_failed = false;
+                let got = sys::SteamAPI_ISteamUtils_GetAPICallResult(
+                    utils,
+                    api_call,
+                    result.as_mut_ptr().cast(),
+                    std::mem::size_of::<sys::AddUGCDependencyResult_t>() as i32,
+                    sys::AddUGCDependencyResult_t_k_iCallback as i32,
+                    &mut read_failed,
+                );
+                if got {
+                    let result = result.assume_init();
+                    if !dependency_result_ok(result.m_eResult) {
+                        return Err(steam_err(
+                            "Could not require Working Record Player",
+                            SteamError::from(result.m_eResult),
+                        ));
+                    }
+                    return Ok(());
+                }
+                // The callback thread may already have consumed the result.
+                if failed && read_failed {
+                    return Err(AppError::Message(
+                        "Steam could not set Working Record Player as a required item.".into(),
+                    ));
+                }
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(AppError::Message(
+                    "Timed out setting Working Record Player as a required item.".into(),
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+fn dependency_result_ok(result: sys::EResult) -> bool {
+    matches!(
+        result,
+        sys::EResult::k_EResultOK
+            | sys::EResult::k_EResultDuplicateRequest
+            | sys::EResult::k_EResultAlreadyOwned
+            | sys::EResult::k_EResultDuplicateName
+            | sys::EResult::k_EResultSameAsPreviousValue
+    )
+}
+
 fn truncate(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_string();
@@ -464,6 +541,20 @@ mod tests {
     #[test]
     fn workshop_url_uses_id() {
         assert!(workshop_url(123).ends_with("id=123"));
+    }
+
+    #[test]
+    fn record_player_requirement_id() {
+        assert_eq!(RECORD_PLAYER_WORKSHOP_ID, 3777821069);
+        assert!(workshop_url(RECORD_PLAYER_WORKSHOP_ID).ends_with("id=3777821069"));
+    }
+
+    #[test]
+    fn already_required_is_not_an_error() {
+        assert!(dependency_result_ok(sys::EResult::k_EResultOK));
+        assert!(dependency_result_ok(sys::EResult::k_EResultDuplicateRequest));
+        assert!(!dependency_result_ok(sys::EResult::k_EResultFail));
+        assert!(!dependency_result_ok(sys::EResult::k_EResultAccessDenied));
     }
 
     #[test]

@@ -69,6 +69,7 @@ The app talks to Steamworks directly (same path as gmpublisher). It does not she
 2. Fill in the album, then use **Publish to Workshop**.
 3. New items are created as **private**. Set visibility in the app or on the Workshop page.
 4. Later publishes with the saved Workshop ID update that item instead of creating a duplicate.
+5. Publishing requires [Working Record Player](https://steamcommunity.com/sharedfiles/filedetails/?id=3777821069) so subscribers get the player automatically.
 
 Steam must be running. If Steam asks you to accept the Workshop legal agreement, do that before the item can go public.
 

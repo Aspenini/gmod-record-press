@@ -199,6 +199,8 @@ pub struct WorkshopPublishResult {
     pub needs_legal_agreement: bool,
     pub legal_agreement_url: String,
     pub export: ExportResult,
+    #[serde(default)]
+    pub dependency_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
