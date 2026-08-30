@@ -51,7 +51,7 @@ pub fn export_album(
     let title = project.resolved_title();
     fs::write(
         addon_dir.join("addon.json"),
-        serde_json::to_string_pretty(&addon_json(&title))?,
+        serde_json::to_string_pretty(&addon_json(&title, project.workshop_id))?,
     )?;
 
     let mut used_names = Vec::new();

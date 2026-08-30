@@ -60,6 +60,23 @@ export type ExportResult = {
   filesWritten: number;
 };
 
+export type VinylAddonInfo = {
+  path: string;
+  folderName: string;
+  vinylId: string;
+  artist: string;
+  album: string;
+  addonTitle: string;
+  trackCount: number;
+  coverDataUrl: string | null;
+};
+
+export type VinylLibrary = {
+  gmodAddonsDir: string | null;
+  scannedDir: string | null;
+  addons: VinylAddonInfo[];
+};
+
 export type WorkshopStatus = {
   connected: boolean;
   persona: string | null;

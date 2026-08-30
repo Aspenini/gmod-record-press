@@ -6,6 +6,7 @@ import type {
   ExportResult,
   ImagePreview,
   Issue,
+  VinylLibrary,
   WorkshopItem,
   WorkshopPublishOptions,
   WorkshopPublishResult,
@@ -24,6 +25,11 @@ export const api = {
   pickExportDir: () => invoke<string | null>("pick_export_dir"),
   pickSaveProject: () => invoke<string | null>("pick_save_project"),
   pickOpenProject: () => invoke<string | null>("pick_open_project"),
+  pickAddonFolder: () => invoke<string | null>("pick_addon_folder"),
+  listVinylAddons: (scanDir?: string | null) =>
+    invoke<VinylLibrary>("list_vinyl_addons", { scanDir: scanDir ?? null }),
+  importVinylAddon: (path: string) =>
+    invoke<AlbumProject>("import_vinyl_addon", { path }),
   saveProject: (path: string, project: AlbumProject) =>
     invoke<void>("save_project", { path, project }),
   loadProject: (path: string) => invoke<AlbumProject>("load_project", { path }),

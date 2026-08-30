@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Dropzone } from "./components/Dropzone";
+import { OpenPanel } from "./components/OpenPanel";
 import { Preview } from "./components/Preview";
 import { TrackList } from "./components/TrackList";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -15,6 +16,7 @@ import type {
   ImagePreview,
   Issue,
   Track,
+  VinylAddonInfo,
   WorkshopItem,
   WorkshopPublishResult,
   WorkshopStatus,
@@ -70,6 +72,11 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget>(null);
   const [projectPath, setProjectPath] = useState<string | null>(null);
+  const [openPanel, setOpenPanel] = useState(false);
+  const [openLoading, setOpenLoading] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [libraryAddons, setLibraryAddons] = useState<VinylAddonInfo[]>([]);
+  const [libraryDir, setLibraryDir] = useState<string | null>(null);
 
   const project = useMemo<AlbumProject>(
     () => ({
@@ -321,10 +328,24 @@ export default function App() {
     setProjectPath(path);
   }
 
-  async function openProject() {
-    const path = await api.pickOpenProject();
-    if (!path) return;
-    const loaded = await api.loadProject(path);
+  async function showOpenPanel() {
+    setOpenPanel(true);
+    setOpenError(null);
+    setOpenLoading(true);
+    try {
+      const library = await api.listVinylAddons();
+      setLibraryAddons(library.addons);
+      setLibraryDir(library.scannedDir);
+      if (library.gmodAddonsDir) setGmodDir(library.gmodAddonsDir);
+    } catch (err) {
+      setLibraryAddons([]);
+      setOpenError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOpenLoading(false);
+    }
+  }
+
+  async function applyLoadedProject(loaded: AlbumProject, jsonPath: string | null) {
     setArtist(loaded.artist);
     setAlbum(loaded.album);
     setVinylId(loaded.vinylId);
@@ -333,24 +354,38 @@ export default function App() {
     setTitleTouched(Boolean(loaded.addonTitle));
     setVinylColor(loaded.vinylColor);
     setVinylResolution(loaded.vinylResolution);
-    setCover(loaded.coverPath ? await api.readImagePreview(loaded.coverPath) : null);
-    setBack(
-      loaded.backCoverPath ? await api.readImagePreview(loaded.backCoverPath) : null,
+    setCover(
+      loaded.coverPath
+        ? await api.readImagePreview(loaded.coverPath).catch(() => null)
+        : null,
     );
-    setLabel(loaded.labelPath ? await api.readImagePreview(loaded.labelPath) : null);
+    setBack(
+      loaded.backCoverPath
+        ? await api.readImagePreview(loaded.backCoverPath).catch(() => null)
+        : null,
+    );
+    setLabel(
+      loaded.labelPath
+        ? await api.readImagePreview(loaded.labelPath).catch(() => null)
+        : null,
+    );
     const infos = loaded.tracks.length
       ? await api.audioInfo(loaded.tracks.map((t) => t.path))
       : [];
+    const infoByPath = new Map(infos.map((info) => [info.path, info]));
     setTracks(
-      loaded.tracks.map((track, i) => ({
-        id: crypto.randomUUID(),
-        name: track.name,
-        path: track.path,
-        fileName: infos[i]?.fileName ?? track.path.split(/[\\/]/).pop() ?? "track",
-        size: infos[i]?.size ?? 0,
-      })),
+      loaded.tracks.map((track) => {
+        const info = infoByPath.get(track.path);
+        return {
+          id: crypto.randomUUID(),
+          name: track.name,
+          path: track.path,
+          fileName: info?.fileName ?? track.path.split(/[\\/]/).pop() ?? "track",
+          size: info?.size ?? 0,
+        };
+      }),
     );
-    setProjectPath(path);
+    setProjectPath(jsonPath);
     setResult(null);
     setWorkshopResult(null);
     setWorkshopId(loaded.workshopId ? String(loaded.workshopId) : "");
@@ -358,6 +393,65 @@ export default function App() {
     setDescriptionTouched(Boolean(loaded.workshopDescription));
     setWorkshopVisibility(loaded.workshopVisibility || "private");
     setChangeNote("");
+    setOpenPanel(false);
+    setOpenError(null);
+  }
+
+  async function openVinylAddon(path: string) {
+    setOpenError(null);
+    try {
+      const loaded = await api.importVinylAddon(path);
+      const parent = path.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
+      if (parent) {
+        setDestDir(parent);
+        localStorage.setItem("rpam.destDir", parent);
+      }
+      await applyLoadedProject(loaded, null);
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function browseAddonFolder() {
+    const dir = await api.pickAddonFolder();
+    if (!dir) return;
+    setOpenError(null);
+    try {
+      const loaded = await api.importVinylAddon(dir);
+      const parent = dir.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]+$/, "");
+      if (parent) {
+        setDestDir(parent);
+        localStorage.setItem("rpam.destDir", parent);
+      }
+      await applyLoadedProject(loaded, null);
+      return;
+    } catch {
+      // Not a single addon — maybe a folder of albums.
+    }
+    setOpenLoading(true);
+    try {
+      const library = await api.listVinylAddons(dir);
+      setLibraryAddons(library.addons);
+      setLibraryDir(library.scannedDir);
+      if (!library.addons.length) {
+        setOpenError("No record player albums in that folder.");
+      }
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOpenLoading(false);
+    }
+  }
+
+  async function openProjectFile() {
+    const path = await api.pickOpenProject();
+    if (!path) return;
+    try {
+      const loaded = await api.loadProject(path);
+      await applyLoadedProject(loaded, path);
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   function reset() {
@@ -403,7 +497,7 @@ export default function App() {
         </div>
         <div className="flex gap-2 text-xs">
           <GhostButton onClick={reset}>New</GhostButton>
-          <GhostButton onClick={() => void openProject()}>Open</GhostButton>
+          <GhostButton onClick={() => void showOpenPanel()}>Open</GhostButton>
           <GhostButton onClick={() => void saveProject()}>Save</GhostButton>
         </div>
       </header>
@@ -767,6 +861,21 @@ export default function App() {
           </section>
         </aside>
       </main>
+      <OpenPanel
+        open={openPanel}
+        loading={openLoading}
+        gmodDetected={Boolean(gmodDir)}
+        scannedDir={libraryDir}
+        addons={libraryAddons}
+        error={openError}
+        onClose={() => {
+          setOpenPanel(false);
+          setOpenError(null);
+        }}
+        onPickAddon={(path) => void openVinylAddon(path)}
+        onBrowseFolder={() => void browseAddonFolder()}
+        onOpenProjectFile={() => void openProjectFile()}
+      />
     </div>
   );
 }

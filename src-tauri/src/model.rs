@@ -99,6 +99,27 @@ pub struct ExportResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct VinylAddonInfo {
+    pub path: String,
+    pub folder_name: String,
+    pub vinyl_id: String,
+    pub artist: String,
+    pub album: String,
+    pub addon_title: String,
+    pub track_count: usize,
+    pub cover_data_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VinylLibrary {
+    pub gmod_addons_dir: Option<String>,
+    pub scanned_dir: Option<String>,
+    pub addons: Vec<VinylAddonInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkshopStatus {
     pub connected: bool,
     pub persona: Option<String>,

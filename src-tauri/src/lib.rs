@@ -1,6 +1,7 @@
 mod error;
 mod export;
 mod gma;
+mod import;
 mod lua;
 mod model;
 mod slug;
@@ -12,7 +13,7 @@ mod workshop;
 use crate::error::AppResult;
 use crate::model::{
     validate_project, AlbumProject, AudioInfo, ExportOptions, ExportProgress, ExportResult,
-    ImagePreview, Issue, WorkshopItem, WorkshopPublishOptions, WorkshopPublishResult,
+    ImagePreview, Issue, VinylLibrary, WorkshopItem, WorkshopPublishOptions, WorkshopPublishResult,
     WorkshopProgress, WorkshopStatus,
 };
 use crate::slug::title_from_filename;
@@ -178,6 +179,30 @@ fn load_project(path: String) -> Result<AlbumProject, String> {
 }
 
 #[tauri::command]
+fn list_vinyl_addons(scan_dir: Option<String>) -> VinylLibrary {
+    import::list_vinyl_library(scan_dir)
+}
+
+#[tauri::command]
+fn import_vinyl_addon(path: String) -> Result<AlbumProject, String> {
+    import::import_vinyl_addon(&path).map_err(Into::into)
+}
+
+#[tauri::command]
+async fn pick_addon_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Choose a vinyl addon folder")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(picked.and_then(|p| p.into_path().ok().map(|p| p.to_string_lossy().to_string())))
+}
+
+#[tauri::command]
 fn open_path(path: String) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -277,8 +302,11 @@ pub fn run() {
             pick_export_dir,
             pick_save_project,
             pick_open_project,
+            pick_addon_folder,
             save_project,
             load_project,
+            list_vinyl_addons,
+            import_vinyl_addon,
             open_path,
             export_addon,
             steam_status,
