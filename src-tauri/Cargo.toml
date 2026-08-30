@@ -1,0 +1,29 @@
+[package]
+name = "record-player-album-maker"
+version = "0.1.0"
+description = "Desktop app for creating Working Record Player album addons for Garry's Mod"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "record_player_album_maker_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+image = "0.25"
+texpresso = "2"
+crc32fast = "1"
+base64 = "0.22"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"

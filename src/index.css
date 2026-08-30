@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Palatino Linotype", Palatino, "Iowan Old Style", Georgia, serif;
+  --font-sans: "Segoe UI", system-ui, sans-serif;
+  --color-ink: #0e0c0b;
+  --color-panel: #171412;
+  --color-raised: #211c18;
+  --color-line: #322b24;
+  --color-cream: #f4ead9;
+  --color-muted: #b9ab96;
+  --color-label: #c44536;
+  --color-gold: #d4a373;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: #0e0c0b;
+  color: #f4ead9;
+  font-family: var(--font-sans);
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 18% -10%, rgba(196, 69, 54, 0.18), transparent 42%),
+    radial-gradient(circle at 110% 80%, rgba(212, 163, 115, 0.08), transparent 40%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a322b;
+  border-radius: 99px;
+}
+
+input[type="color"] {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+@keyframes spin-disc {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.disc-spin {
+  animation: spin-disc 7.5s linear infinite;
+}
+
+.sleeve {
+  transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sleeve.flipped {
+  transform: rotateY(180deg);
+}
