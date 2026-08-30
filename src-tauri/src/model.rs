@@ -91,7 +91,9 @@ pub fn standard_workshop_description(artist: &str, album: &str) -> String {
          \n\
          I do not claim ownership of any music, recordings, artwork, trademarks, or other copyrighted material included in this addon. All rights belong to their respective artists, labels, publishers, and copyright holders.\n\
          \n\
-         This addon is not affiliated with or endorsed by the original artists or rights holders and is provided for entertainment purposes only."
+         This addon is not affiliated with or endorsed by the original artists or rights holders and is provided for entertainment purposes only.\n\
+         \n\
+         Created with [url=https://github.com/Aspenini/gmod-record-press]GMod Record Press[/url]."
     )
 }
 

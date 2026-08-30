@@ -10,7 +10,13 @@ import { ViewSwitch } from "./components/ViewSwitch";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "./lib/api";
 import { suggestAlbumMeta, type AlbumMetaSuggestion } from "./lib/audioMeta";
-import { defaultAddonTitle, defaultWorkshopDescription, parseWorkshopId, slugify } from "./lib/slug";
+import {
+  defaultAddonTitle,
+  defaultWorkshopDescription,
+  parseWorkshopId,
+  slugify,
+  WORKSHOP_TITLE_PREFIX,
+} from "./lib/slug";
 import type {
   AlbumProject,
   AudioInfo,
@@ -67,6 +73,7 @@ export default function App() {
   const [changeNote, setChangeNote] = useState("");
   const [steam, setSteam] = useState<WorkshopStatus | null>(null);
   const [workshopItems, setWorkshopItems] = useState<WorkshopItem[]>([]);
+  const [showOnlyRelevantWorkshopItems, setShowOnlyRelevantWorkshopItems] = useState(true);
   const [issues, setIssues] = useState<Issue[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
@@ -129,6 +136,14 @@ export default function App() {
       workshopVisibility,
       useDescriptionTemplate,
     ],
+  );
+
+  const visibleWorkshopItems = useMemo(
+    () =>
+      showOnlyRelevantWorkshopItems
+        ? workshopItems.filter((item) => item.title.startsWith(WORKSHOP_TITLE_PREFIX))
+        : workshopItems,
+    [showOnlyRelevantWorkshopItems, workshopItems],
   );
 
   useEffect(() => {
@@ -879,22 +894,19 @@ export default function App() {
               />
               Use default description
             </label>
-            <label className="mt-2 block">
-              <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
-                Description
-              </span>
-              <textarea
-                value={workshopDescription}
-                readOnly={useDescriptionTemplate}
-                onChange={(e) => setWorkshopDescription(e.target.value)}
-                rows={10}
-                className={`mt-1 w-full resize-y rounded-lg border border-line px-3 py-2 text-sm outline-none ${
-                  useDescriptionTemplate
-                    ? "bg-ink/50 text-muted"
-                    : "bg-ink text-cream focus:border-gold"
-                }`}
-              />
-            </label>
+            {!useDescriptionTemplate && (
+              <label className="mt-2 block">
+                <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
+                  Description
+                </span>
+                <textarea
+                  value={workshopDescription}
+                  onChange={(e) => setWorkshopDescription(e.target.value)}
+                  rows={10}
+                  className="mt-1 w-full resize-y rounded-lg border border-line bg-ink px-3 py-2 text-sm text-cream outline-none focus:border-gold"
+                />
+              </label>
+            )}
 
             <label className="mt-3 block">
               <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
@@ -908,23 +920,37 @@ export default function App() {
               />
             </label>
             {workshopItems.length > 0 && (
-              <label className="mt-2 block">
-                <span className="text-[11px] tracking-[0.18em] text-muted uppercase">
-                  Your addons
+              <div className="mt-2 block">
+                <span className="flex items-center justify-between gap-3">
+                  <label
+                    htmlFor="workshop-item"
+                    className="text-[11px] tracking-[0.18em] text-muted uppercase"
+                  >
+                    Your addons
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-muted">
+                    <input
+                      type="checkbox"
+                      checked={showOnlyRelevantWorkshopItems}
+                      onChange={(e) => setShowOnlyRelevantWorkshopItems(e.target.checked)}
+                    />
+                    Show only relevant
+                  </label>
                 </span>
                 <select
+                  id="workshop-item"
                   value={workshopId}
                   onChange={(e) => setWorkshopId(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-cream outline-none"
                 >
                   <option value="">Create a new Workshop item</option>
-                  {workshopItems.map((item) => (
+                  {visibleWorkshopItems.map((item) => (
                     <option key={item.id} value={String(item.id)}>
                       {item.title} ({item.id})
                     </option>
                   ))}
                 </select>
-              </label>
+              </div>
             )}
             {linkedWorkshopId && (
               <button

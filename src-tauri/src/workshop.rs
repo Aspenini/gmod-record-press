@@ -519,6 +519,9 @@ mod tests {
         assert!(text.contains("[h1]Working Record Player - Test Artist - Demo Days[/h1]"));
         assert!(text.contains("[b]Working Record Player[/b]"));
         assert!(text.contains("Copyright Notice"));
+        assert!(text.contains(
+            "Created with [url=https://github.com/Aspenini/gmod-record-press]GMod Record Press[/url]."
+        ));
         assert!(!text.contains("1. First Song"));
     }
 
