@@ -298,7 +298,7 @@ export default function App() {
             Garry's Mod
           </div>
           <h1 className="font-display text-2xl text-cream">
-            Record Player Album Maker
+            GMod Record Press
           </h1>
         </div>
         <div className="flex gap-2 text-xs">

@@ -1,4 +1,4 @@
-# Record Player Album Maker
+# GMod Record Press
 
 A desktop app for creating **Working Record Player** album addons for Garry's Mod.
 

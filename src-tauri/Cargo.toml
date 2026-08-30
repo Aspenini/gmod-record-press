@@ -1,12 +1,12 @@
 [package]
-name = "record-player-album-maker"
+name = "gmod-record-press"
 version = "0.1.0"
 description = "Desktop app for creating Working Record Player album addons for Garry's Mod"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "record_player_album_maker_lib"
+name = "gmod_record_press_lib"
 # Desktop only: staticlib is for mobile and doubles link time.
 crate-type = ["cdylib", "rlib"]
 
