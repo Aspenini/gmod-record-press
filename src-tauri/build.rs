@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
+    println!("cargo:rerun-if-changed=icons/icon.ico");
     copy_steam_api();
     tauri_build::build();
 }
