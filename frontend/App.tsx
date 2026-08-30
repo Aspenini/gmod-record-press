@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import packageInfo from "../package.json";
 import { Dropzone } from "./components/Dropzone";
 import { MetadataPicker } from "./components/MetadataPicker";
@@ -154,8 +153,6 @@ export default function App() {
   );
   const currentSignature = JSON.stringify(project);
   const isDirty = cleanSignature !== null && cleanSignature !== currentSignature;
-  const dirtyRef = useRef(isDirty);
-  dirtyRef.current = isDirty;
 
   useEffect(() => {
     if (cleanSignature === null) setCleanSignature(currentSignature);
@@ -172,24 +169,6 @@ export default function App() {
       })
       .catch((err) => setError(errorMessage(err)));
     void refreshSteam();
-  }, []);
-
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    getCurrentWindow()
-      .onCloseRequested((event) => {
-        if (
-          dirtyRef.current &&
-          !window.confirm("You have unsaved changes. Close GMod Record Press anyway?")
-        ) {
-          event.preventDefault();
-        }
-      })
-      .then((fn) => {
-        unlisten = fn;
-      })
-      .catch(() => undefined);
-    return () => unlisten?.();
   }, []);
 
   useEffect(() => {
