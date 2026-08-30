@@ -57,8 +57,14 @@ pub fn encode_dxt1_vtf(img: &DynamicImage) -> AppResult<Vec<u8>> {
         )));
     }
 
+    let rgba = img.to_rgba8();
+    let low_w = 16u32.min(w).max(1);
+    let low_h = 16u32.min(h).max(1);
+    let low = image::imageops::resize(&rgba, low_w, low_h, FilterType::Triangle);
+    let lowres = compress_bc1(&low);
+
     let mut mip_images = Vec::new();
-    let mut current = img.to_rgba8();
+    let mut current = rgba;
     loop {
         let cw = current.width();
         let ch = current.height();
@@ -74,14 +80,16 @@ pub fn encode_dxt1_vtf(img: &DynamicImage) -> AppResult<Vec<u8>> {
     // VTF stores mipmaps smallest → largest.
     mip_images.reverse();
 
-    let low_w: u8 = 16.min(w as u8).max(1);
-    let low_h: u8 = 16.min(h as u8).max(1);
-    let low = image::imageops::resize(&img.to_rgba8(), low_w as u32, low_h as u32, FilterType::Triangle);
-    let lowres = compress_bc1(&low);
-
     let mipmap_count = mip_images.len() as u8;
     let mut data = Vec::new();
-    write_header_72(&mut data, w as u16, h as u16, mipmap_count, low_w, low_h);
+    write_header_72(
+        &mut data,
+        w as u16,
+        h as u16,
+        mipmap_count,
+        low_w as u8,
+        low_h as u8,
+    );
     data.extend_from_slice(&lowres);
     for mip in mip_images {
         data.extend_from_slice(&mip);
@@ -119,8 +127,14 @@ fn write_header_72(data: &mut Vec<u8>, width: u16, height: u16, mips: u8, low_w:
 fn compress_bc1(img: &RgbaImage) -> Vec<u8> {
     let w = img.width() as usize;
     let h = img.height() as usize;
-    let (cw, ch, pixels) = if w < 4 || h < 4 {
-        let mut padded = vec![0u8; 4 * 4 * 4];
+    let params = Params {
+        algorithm: Algorithm::RangeFit,
+        weights: [0.2126, 0.7152, 0.0722],
+        weigh_colour_by_alpha: false,
+    };
+
+    if w < 4 || h < 4 {
+        let mut padded = [0u8; 64];
         for y in 0..h {
             for x in 0..w {
                 let p = img.get_pixel(x as u32, y as u32).0;
@@ -128,18 +142,13 @@ fn compress_bc1(img: &RgbaImage) -> Vec<u8> {
                 padded[i..i + 4].copy_from_slice(&p);
             }
         }
-        (4usize, 4usize, padded)
-    } else {
-        (w, h, img.as_raw().clone())
-    };
+        let mut out = vec![0u8; Format::Bc1.compressed_size(4, 4)];
+        Format::Bc1.compress(&padded, 4, 4, params, &mut out);
+        return out;
+    }
 
-    let params = Params {
-        algorithm: Algorithm::RangeFit,
-        weights: [0.2126, 0.7152, 0.0722],
-        weigh_colour_by_alpha: false,
-    };
-    let mut out = vec![0u8; Format::Bc1.compressed_size(cw, ch)];
-    Format::Bc1.compress(&pixels, cw, ch, params, &mut out);
+    let mut out = vec![0u8; Format::Bc1.compressed_size(w, h)];
+    Format::Bc1.compress(img.as_raw(), w, h, params, &mut out);
     out
 }
 
@@ -194,5 +203,19 @@ mod tests {
         assert_eq!(height, 32);
         assert_eq!(format, 13);
         assert!(bytes.len() > 80);
+        assert_eq!(bytes[61], 16);
+        assert_eq!(bytes[62], 16);
+    }
+
+    #[test]
+    fn vtf_lowres_stays_16_on_large_textures() {
+        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            512,
+            512,
+            image::Rgba([200, 40, 40, 255]),
+        ));
+        let bytes = encode_dxt1_vtf(&img).expect("encode");
+        assert_eq!(bytes[61], 16);
+        assert_eq!(bytes[62], 16);
     }
 }

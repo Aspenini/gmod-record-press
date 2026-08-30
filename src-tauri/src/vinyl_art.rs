@@ -1,5 +1,6 @@
 use crate::vtf_encode::{cover_square, parse_hex_color};
 use image::{DynamicImage, Rgba, RgbaImage};
+use rayon::prelude::*;
 
 /// Label radius as a fraction of the disc radius, measured against the
 /// official Paranoid vinyl (center sticker occupies ~35% of the diameter).
@@ -11,39 +12,50 @@ pub fn render_vinyl(label: &DynamicImage, color_hex: &str, size: u32) -> Dynamic
     let size = size.max(64);
     let label_sq = cover_square(label, size).to_rgba8();
     let vinyl = parse_hex_color(color_hex);
-    let mut buf = RgbaImage::new(size, size);
 
     let cx = (size as f32 - 1.0) * 0.5;
-    let cy = cx;
     let radius = size as f32 * 0.5;
     let label_r = radius * LABEL_RATIO;
     let hole_r = radius * HOLE_RATIO;
     let rim_r = radius * RIM_RATIO;
+    let rim_r2 = rim_r * rim_r;
     let groove_inner = label_r + radius * 0.018;
+    let row_bytes = size as usize * 4;
 
-    for y in 0..size {
+    let mut buf = vec![0u8; size as usize * row_bytes];
+    buf.par_chunks_mut(row_bytes).enumerate().for_each(|(y, row)| {
+        let dy = y as f32 - cx;
         for x in 0..size {
             let dx = x as f32 - cx;
-            let dy = y as f32 - cy;
-            let r = (dx * dx + dy * dy).sqrt();
-            let pixel = sample_pixel(
-                dx,
-                dy,
-                r,
-                radius,
-                label_r,
-                hole_r,
-                rim_r,
-                groove_inner,
-                vinyl,
-                &label_sq,
-                size,
-            );
-            buf.put_pixel(x, y, pixel);
+            let r2 = dx * dx + dy * dy;
+            let pixel = if r2 > rim_r2 {
+                Rgba([0, 0, 0, 255])
+            } else {
+                sample_pixel(
+                    dx,
+                    dy,
+                    r2.sqrt(),
+                    radius,
+                    label_r,
+                    hole_r,
+                    rim_r,
+                    groove_inner,
+                    vinyl,
+                    &label_sq,
+                    size,
+                )
+            };
+            let i = x as usize * 4;
+            row[i] = pixel[0];
+            row[i + 1] = pixel[1];
+            row[i + 2] = pixel[2];
+            row[i + 3] = 255;
         }
-    }
+    });
 
-    DynamicImage::ImageRgba8(buf)
+    DynamicImage::ImageRgba8(
+        RgbaImage::from_raw(size, size, buf).expect("vinyl buffer matches image size"),
+    )
 }
 
 fn sample_pixel(
