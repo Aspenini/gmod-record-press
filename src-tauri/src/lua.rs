@@ -97,7 +97,9 @@ pub fn addon_json(
     let mut value = serde_json::json!({
         "title": title,
         "type": "entity",
-        "tags": ["fun", "realism", "roleplay"],
+        // gmad.exe rejects an addon.json with more than two tags, so anyone
+        // repacking the exported folder by hand gets a working addon too.
+        "tags": ["fun", "roleplay"],
         "ignore": [],
         "recordpress": {
             "vinylColor": vinyl_color,

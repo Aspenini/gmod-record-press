@@ -111,15 +111,13 @@ pub fn export_album(
     progress(stage("setup", "Writing addon.json and Lua.", 22));
 
     let title = project.resolved_title();
-    fs::write(
-        building_dir.join("addon.json"),
-        serde_json::to_string_pretty(&addon_json(
-            &title,
-            project.workshop_id,
-            &project.vinyl_color,
-            project.vinyl_resolution,
-        ))?,
-    )?;
+    let addon_manifest = serde_json::to_string_pretty(&addon_json(
+        &title,
+        project.workshop_id,
+        &project.vinyl_color,
+        project.vinyl_resolution,
+    ))?;
+    fs::write(building_dir.join("addon.json"), &addon_manifest)?;
 
     let lua_tracks: Vec<(String, String)> = track_pairs
         .iter()
@@ -189,7 +187,7 @@ pub fn export_album(
         progress(stage("gma", "Packing .gma.", 90));
         let packed = collect_gma_files(&building_dir)?;
         let gma = dest_parent.join(format!("{}.gma", project.addon_folder_name()));
-        write_gma(&pending_gma, &title, &packed)?;
+        write_gma(&pending_gma, &title, &addon_manifest, &packed)?;
         files_written += 1;
         Some(gma.to_string_lossy().to_string())
     } else {
