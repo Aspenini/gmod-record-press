@@ -7,6 +7,7 @@ use crate::vinyl_art::render_vinyl;
 use crate::vtf_encode::{
     cover_square, encode_dxt1_vtf, encode_png, encode_workshop_jpeg, fit_max_edge, load_image,
 };
+use crate::workshop_icon::render_workshop_icon;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -168,9 +169,16 @@ pub fn export_album(
     let mut files_written = 12 + project.tracks.len();
 
     let workshop_icon_path = if options.write_workshop_icon {
-        progress(stage("icon", "Writing workshop icon.", 84));
+        progress(stage("icon", "Composing workshop cover.", 84));
         let icon_path = dest_parent.join(format!("{}.jpg", project.addon_folder_name()));
-        fs::write(&pending_icon, encode_workshop_jpeg(&cover)?)?;
+        let workshop_icon = render_workshop_icon(
+            &cover,
+            &label_img,
+            &project.vinyl_color,
+            &project.artist,
+            &project.album,
+        );
+        fs::write(&pending_icon, encode_workshop_jpeg(&workshop_icon)?)?;
         files_written += 1;
         Some(icon_path.to_string_lossy().to_string())
     } else {

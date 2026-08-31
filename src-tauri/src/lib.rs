@@ -10,6 +10,7 @@ mod steam;
 mod vinyl_art;
 mod vtf_encode;
 mod workshop;
+mod workshop_icon;
 
 use crate::error::AppResult;
 use crate::model::{
@@ -18,6 +19,7 @@ use crate::model::{
     WorkshopProgress, WorkshopStatus,
 };
 use crate::vtf_encode::{load_image, preview_data_url};
+use crate::workshop_icon::render_workshop_icon;
 use std::path::Path;
 use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
@@ -52,6 +54,33 @@ async fn read_image_preview(path: String) -> Result<ImagePreview, String> {
         .await
         .map_err(|e| e.to_string())?
         .map_err(Into::into)
+}
+
+#[tauri::command]
+async fn workshop_icon_preview(
+    cover_path: String,
+    label_path: Option<String>,
+    vinyl_color: String,
+    artist: String,
+    album: String,
+) -> Result<ImagePreview, String> {
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<ImagePreview> {
+        let cover = load_image(Path::new(&cover_path))?;
+        let label = match label_path.as_deref() {
+            Some(path) if !path.trim().is_empty() => load_image(Path::new(path))?,
+            _ => cover.clone(),
+        };
+        let icon = render_workshop_icon(&cover, &label, &vinyl_color, &artist, &album);
+        Ok(ImagePreview {
+            path: "workshop-preview".into(),
+            data_url: preview_data_url(&icon, 512)?,
+            width: 512,
+            height: 512,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -239,6 +268,7 @@ pub fn run() {
             suggest_gmod_addons_dir,
             audio_info,
             read_image_preview,
+            workshop_icon_preview,
             pick_image,
             pick_audio_files,
             pick_export_dir,

@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 import type { ImagePreview } from "../types";
 
 type Props = {
@@ -12,6 +14,38 @@ type Props = {
 export function Preview({ album, artist, vinylColor, cover, back, label }: Props) {
   const rear = back ?? cover;
   const sticker = label ?? cover;
+  const [workshopCover, setWorkshopCover] = useState<ImagePreview | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const coverPath = cover?.path;
+    if (!coverPath) {
+      setWorkshopCover(null);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void api
+        .workshopIconPreview({
+          coverPath,
+          labelPath: label?.path ?? null,
+          vinylColor,
+          artist,
+          album,
+        })
+        .then((preview) => {
+          if (!cancelled) setWorkshopCover(preview);
+        })
+        .catch(() => {
+          if (!cancelled) setWorkshopCover(null);
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [album, artist, cover?.path, label?.path, vinylColor]);
 
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center gap-8 px-4 py-6">
@@ -32,6 +66,7 @@ export function Preview({ album, artist, vinylColor, cover, back, label }: Props
           empty="Back cover"
         />
       </div>
+      <WorkshopCover image={workshopCover} />
       <div className="text-center">
         <div className="font-display text-3xl text-cream">
           {album || "Untitled album"}
@@ -41,6 +76,25 @@ export function Preview({ album, artist, vinylColor, cover, back, label }: Props
         </div>
       </div>
     </div>
+  );
+}
+
+function WorkshopCover({ image }: { image: ImagePreview | null }) {
+  return (
+    <figure className="flex flex-col items-center gap-3">
+      <div className="relative h-64 w-64 overflow-hidden rounded-sm border border-line shadow-[12px_18px_40px_rgba(0,0,0,0.45)]">
+        {image ? (
+          <img src={image.dataUrl} alt="Workshop cover" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-raised px-8 text-center text-sm text-muted">
+            Add a front cover to preview the Workshop image
+          </div>
+        )}
+      </div>
+      <figcaption className="text-[11px] tracking-[0.22em] text-gold uppercase">
+        Workshop cover
+      </figcaption>
+    </figure>
   );
 }
 

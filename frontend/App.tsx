@@ -826,22 +826,26 @@ export default function App() {
                 <option value={4096}>4096 — official size (776px label)</option>
               </select>
             </label>
-            <label className="mt-2 flex items-center gap-2 text-sm text-muted">
-              <input
-                type="checkbox"
-                checked={writeGma}
-                onChange={(e) => setWriteGma(e.target.checked)}
-              />
-              Also pack a .gma
-            </label>
-            <label className="mt-1 flex items-center gap-2 text-sm text-muted">
-              <input
-                type="checkbox"
-                checked={writeIcon}
-                onChange={(e) => setWriteIcon(e.target.checked)}
-              />
-              Write a 512×512 workshop JPEG beside the addon
-            </label>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="flex min-w-0 items-start gap-2 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={writeGma}
+                  onChange={(e) => setWriteGma(e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                <span>Also pack a .gma</span>
+              </label>
+              <label className="flex min-w-0 items-start gap-2 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={writeIcon}
+                  onChange={(e) => setWriteIcon(e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                <span>Generate a 512×512 Workshop cover with sleeve, vinyl, artist, and album</span>
+              </label>
+            </div>
 
             <button
               type="button"

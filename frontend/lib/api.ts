@@ -20,6 +20,13 @@ export const api = {
   audioInfo: (paths: string[]) => invoke<AudioScan>("audio_info", { paths }),
   readImagePreview: (path: string) =>
     invoke<ImagePreview>("read_image_preview", { path }),
+  workshopIconPreview: (args: {
+    coverPath: string;
+    labelPath: string | null;
+    vinylColor: string;
+    artist: string;
+    album: string;
+  }) => invoke<ImagePreview>("workshop_icon_preview", args),
   pickImage: () => invoke<ImagePreview | null>("pick_image"),
   pickAudioFiles: () => invoke<AudioScan>("pick_audio_files"),
   pickExportDir: () => invoke<string | null>("pick_export_dir"),
